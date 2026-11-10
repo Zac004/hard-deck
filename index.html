@@ -1,0 +1,2461 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="night">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>HARD DECK: terrain height, cross-checked</title>
+<meta name="description" content="Find the height of any point above sea level, compare terrain models and DTED files, and see exactly how the WGS84 ellipsoid, EGM96 and EGM2008 differ there.">
+<meta name="theme-color" content="#1D2B38">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Hard Deck">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preload" as="fetch" href="geoid-sa.bin?v=54f431b6" crossorigin="anonymous">
+<link rel="preload" as="script" href="leaflet.js?v=54f431b6">
+<script>(function(){try{var t=JSON.parse(localStorage.getItem('hd.theme')||'null');if(t!=='day'&&t!=='night')t=matchMedia('(prefers-color-scheme: light)').matches?'day':'night';document.documentElement.setAttribute('data-theme',t)}catch(e){}})();</script>
+<style>
+/* required styles */
+
+.leaflet-pane,
+.leaflet-tile,
+.leaflet-marker-icon,
+.leaflet-marker-shadow,
+.leaflet-tile-container,
+.leaflet-pane > svg,
+.leaflet-pane > canvas,
+.leaflet-zoom-box,
+.leaflet-image-layer,
+.leaflet-layer {
+	position: absolute;
+	left: 0;
+	top: 0;
+	}
+.leaflet-container {
+	overflow: hidden;
+	}
+.leaflet-tile,
+.leaflet-marker-icon,
+.leaflet-marker-shadow {
+	-webkit-user-select: none;
+	   -moz-user-select: none;
+	        user-select: none;
+	  -webkit-user-drag: none;
+	}
+/* Prevents IE11 from highlighting tiles in blue */
+.leaflet-tile::selection {
+	background: transparent;
+}
+/* Safari renders non-retina tile on retina better with this, but Chrome is worse */
+.leaflet-safari .leaflet-tile {
+	image-rendering: -webkit-optimize-contrast;
+	}
+/* hack that prevents hw layers "stretching" when loading new tiles */
+.leaflet-safari .leaflet-tile-container {
+	width: 1600px;
+	height: 1600px;
+	-webkit-transform-origin: 0 0;
+	}
+.leaflet-marker-icon,
+.leaflet-marker-shadow {
+	display: block;
+	}
+/* .leaflet-container svg: reset svg max-width decleration shipped in Joomla! (joomla.org) 3.x */
+/* .leaflet-container img: map is broken in FF if you have max-width: 100% on tiles */
+.leaflet-container .leaflet-overlay-pane svg {
+	max-width: none !important;
+	max-height: none !important;
+	}
+.leaflet-container .leaflet-marker-pane img,
+.leaflet-container .leaflet-shadow-pane img,
+.leaflet-container .leaflet-tile-pane img,
+.leaflet-container img.leaflet-image-layer,
+.leaflet-container .leaflet-tile {
+	max-width: none !important;
+	max-height: none !important;
+	width: auto;
+	padding: 0;
+	}
+
+.leaflet-container img.leaflet-tile {
+	/* See: https://bugs.chromium.org/p/chromium/issues/detail?id=600120 */
+	mix-blend-mode: plus-lighter;
+}
+
+.leaflet-container.leaflet-touch-zoom {
+	-ms-touch-action: pan-x pan-y;
+	touch-action: pan-x pan-y;
+	}
+.leaflet-container.leaflet-touch-drag {
+	-ms-touch-action: pinch-zoom;
+	/* Fallback for FF which doesn't support pinch-zoom */
+	touch-action: none;
+	touch-action: pinch-zoom;
+}
+.leaflet-container.leaflet-touch-drag.leaflet-touch-zoom {
+	-ms-touch-action: none;
+	touch-action: none;
+}
+.leaflet-container {
+	-webkit-tap-highlight-color: transparent;
+}
+.leaflet-container a {
+	-webkit-tap-highlight-color: rgba(51, 181, 229, 0.4);
+}
+.leaflet-tile {
+	filter: inherit;
+	visibility: hidden;
+	}
+.leaflet-tile-loaded {
+	visibility: inherit;
+	}
+.leaflet-zoom-box {
+	width: 0;
+	height: 0;
+	-moz-box-sizing: border-box;
+	     box-sizing: border-box;
+	z-index: 800;
+	}
+/* workaround for https://bugzilla.mozilla.org/show_bug.cgi?id=888319 */
+.leaflet-overlay-pane svg {
+	-moz-user-select: none;
+	}
+
+.leaflet-pane         { z-index: 400; }
+
+.leaflet-tile-pane    { z-index: 200; }
+.leaflet-overlay-pane { z-index: 400; }
+.leaflet-shadow-pane  { z-index: 500; }
+.leaflet-marker-pane  { z-index: 600; }
+.leaflet-tooltip-pane   { z-index: 650; }
+.leaflet-popup-pane   { z-index: 700; }
+
+.leaflet-map-pane canvas { z-index: 100; }
+.leaflet-map-pane svg    { z-index: 200; }
+
+.leaflet-vml-shape {
+	width: 1px;
+	height: 1px;
+	}
+.lvml {
+	behavior: url(#default#VML);
+	display: inline-block;
+	position: absolute;
+	}
+
+
+/* control positioning */
+
+.leaflet-control {
+	position: relative;
+	z-index: 800;
+	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
+	pointer-events: auto;
+	}
+.leaflet-top,
+.leaflet-bottom {
+	position: absolute;
+	z-index: 1000;
+	pointer-events: none;
+	}
+.leaflet-top {
+	top: 0;
+	}
+.leaflet-right {
+	right: 0;
+	}
+.leaflet-bottom {
+	bottom: 0;
+	}
+.leaflet-left {
+	left: 0;
+	}
+.leaflet-control {
+	float: left;
+	clear: both;
+	}
+.leaflet-right .leaflet-control {
+	float: right;
+	}
+.leaflet-top .leaflet-control {
+	margin-top: 10px;
+	}
+.leaflet-bottom .leaflet-control {
+	margin-bottom: 10px;
+	}
+.leaflet-left .leaflet-control {
+	margin-left: 10px;
+	}
+.leaflet-right .leaflet-control {
+	margin-right: 10px;
+	}
+
+
+/* zoom and fade animations */
+
+.leaflet-fade-anim .leaflet-popup {
+	opacity: 0;
+	-webkit-transition: opacity 0.2s linear;
+	   -moz-transition: opacity 0.2s linear;
+	        transition: opacity 0.2s linear;
+	}
+.leaflet-fade-anim .leaflet-map-pane .leaflet-popup {
+	opacity: 1;
+	}
+.leaflet-zoom-animated {
+	-webkit-transform-origin: 0 0;
+	    -ms-transform-origin: 0 0;
+	        transform-origin: 0 0;
+	}
+svg.leaflet-zoom-animated {
+	will-change: transform;
+}
+
+.leaflet-zoom-anim .leaflet-zoom-animated {
+	-webkit-transition: -webkit-transform 0.25s cubic-bezier(0,0,0.25,1);
+	   -moz-transition:    -moz-transform 0.25s cubic-bezier(0,0,0.25,1);
+	        transition:         transform 0.25s cubic-bezier(0,0,0.25,1);
+	}
+.leaflet-zoom-anim .leaflet-tile,
+.leaflet-pan-anim .leaflet-tile {
+	-webkit-transition: none;
+	   -moz-transition: none;
+	        transition: none;
+	}
+
+.leaflet-zoom-anim .leaflet-zoom-hide {
+	visibility: hidden;
+	}
+
+
+/* cursors */
+
+.leaflet-interactive {
+	cursor: pointer;
+	}
+.leaflet-grab {
+	cursor: -webkit-grab;
+	cursor:    -moz-grab;
+	cursor:         grab;
+	}
+.leaflet-crosshair,
+.leaflet-crosshair .leaflet-interactive {
+	cursor: crosshair;
+	}
+.leaflet-popup-pane,
+.leaflet-control {
+	cursor: auto;
+	}
+.leaflet-dragging .leaflet-grab,
+.leaflet-dragging .leaflet-grab .leaflet-interactive,
+.leaflet-dragging .leaflet-marker-draggable {
+	cursor: move;
+	cursor: -webkit-grabbing;
+	cursor:    -moz-grabbing;
+	cursor:         grabbing;
+	}
+
+/* marker & overlays interactivity */
+.leaflet-marker-icon,
+.leaflet-marker-shadow,
+.leaflet-image-layer,
+.leaflet-pane > svg path,
+.leaflet-tile-container {
+	pointer-events: none;
+	}
+
+.leaflet-marker-icon.leaflet-interactive,
+.leaflet-image-layer.leaflet-interactive,
+.leaflet-pane > svg path.leaflet-interactive,
+svg.leaflet-image-layer.leaflet-interactive path {
+	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
+	pointer-events: auto;
+	}
+
+/* visual tweaks */
+
+.leaflet-container {
+	background: #ddd;
+	outline-offset: 1px;
+	}
+.leaflet-container a {
+	color: #0078A8;
+	}
+.leaflet-zoom-box {
+	border: 2px dotted #38f;
+	background: rgba(255,255,255,0.5);
+	}
+
+
+/* general typography */
+.leaflet-container {
+	font-family: "Helvetica Neue", Arial, Helvetica, sans-serif;
+	font-size: 12px;
+	font-size: 0.75rem;
+	line-height: 1.5;
+	}
+
+
+/* general toolbar styles */
+
+.leaflet-bar {
+	box-shadow: 0 1px 5px rgba(0,0,0,0.65);
+	border-radius: 4px;
+	}
+.leaflet-bar a {
+	background-color: #fff;
+	border-bottom: 1px solid #ccc;
+	width: 26px;
+	height: 26px;
+	line-height: 26px;
+	display: block;
+	text-align: center;
+	text-decoration: none;
+	color: black;
+	}
+.leaflet-bar a,
+.leaflet-control-layers-toggle {
+	background-position: 50% 50%;
+	background-repeat: no-repeat;
+	display: block;
+	}
+.leaflet-bar a:hover,
+.leaflet-bar a:focus {
+	background-color: #f4f4f4;
+	}
+.leaflet-bar a:first-child {
+	border-top-left-radius: 4px;
+	border-top-right-radius: 4px;
+	}
+.leaflet-bar a:last-child {
+	border-bottom-left-radius: 4px;
+	border-bottom-right-radius: 4px;
+	border-bottom: none;
+	}
+.leaflet-bar a.leaflet-disabled {
+	cursor: default;
+	background-color: #f4f4f4;
+	color: #bbb;
+	}
+
+.leaflet-touch .leaflet-bar a {
+	width: 30px;
+	height: 30px;
+	line-height: 30px;
+	}
+.leaflet-touch .leaflet-bar a:first-child {
+	border-top-left-radius: 2px;
+	border-top-right-radius: 2px;
+	}
+.leaflet-touch .leaflet-bar a:last-child {
+	border-bottom-left-radius: 2px;
+	border-bottom-right-radius: 2px;
+	}
+
+/* zoom control */
+
+.leaflet-control-zoom-in,
+.leaflet-control-zoom-out {
+	font: bold 18px 'Lucida Console', Monaco, monospace;
+	text-indent: 1px;
+	}
+
+.leaflet-touch .leaflet-control-zoom-in, .leaflet-touch .leaflet-control-zoom-out  {
+	font-size: 22px;
+	}
+
+
+/* layers control */
+
+.leaflet-control-layers {
+	box-shadow: 0 1px 5px rgba(0,0,0,0.4);
+	background: #fff;
+	border-radius: 5px;
+	}
+.leaflet-control-layers-toggle {
+	background-image: none;
+	width: 36px;
+	height: 36px;
+	}
+.leaflet-retina .leaflet-control-layers-toggle {
+	background-image: none;
+	background-size: 26px 26px;
+	}
+.leaflet-touch .leaflet-control-layers-toggle {
+	width: 44px;
+	height: 44px;
+	}
+.leaflet-control-layers .leaflet-control-layers-list,
+.leaflet-control-layers-expanded .leaflet-control-layers-toggle {
+	display: none;
+	}
+.leaflet-control-layers-expanded .leaflet-control-layers-list {
+	display: block;
+	position: relative;
+	}
+.leaflet-control-layers-expanded {
+	padding: 6px 10px 6px 6px;
+	color: #333;
+	background: #fff;
+	}
+.leaflet-control-layers-scrollbar {
+	overflow-y: scroll;
+	overflow-x: hidden;
+	padding-right: 5px;
+	}
+.leaflet-control-layers-selector {
+	margin-top: 2px;
+	position: relative;
+	top: 1px;
+	}
+.leaflet-control-layers label {
+	display: block;
+	font-size: 13px;
+	font-size: 1.08333em;
+	}
+.leaflet-control-layers-separator {
+	height: 0;
+	border-top: 1px solid #ddd;
+	margin: 5px -10px 5px -6px;
+	}
+
+/* Default icon URLs */
+.leaflet-default-icon-path { /* used only in path-guessing heuristic, see L.Icon.Default */
+	background-image: none;
+	}
+
+
+/* attribution and scale controls */
+
+.leaflet-container .leaflet-control-attribution {
+	background: #fff;
+	background: rgba(255, 255, 255, 0.8);
+	margin: 0;
+	}
+.leaflet-control-attribution,
+.leaflet-control-scale-line {
+	padding: 0 5px;
+	color: #333;
+	line-height: 1.4;
+	}
+.leaflet-control-attribution a {
+	text-decoration: none;
+	}
+.leaflet-control-attribution a:hover,
+.leaflet-control-attribution a:focus {
+	text-decoration: underline;
+	}
+.leaflet-attribution-flag {
+	display: inline !important;
+	vertical-align: baseline !important;
+	width: 1em;
+	height: 0.6669em;
+	}
+.leaflet-left .leaflet-control-scale {
+	margin-left: 5px;
+	}
+.leaflet-bottom .leaflet-control-scale {
+	margin-bottom: 5px;
+	}
+.leaflet-control-scale-line {
+	border: 2px solid #777;
+	border-top: none;
+	line-height: 1.1;
+	padding: 2px 5px 1px;
+	white-space: nowrap;
+	-moz-box-sizing: border-box;
+	     box-sizing: border-box;
+	background: rgba(255, 255, 255, 0.8);
+	text-shadow: 1px 1px #fff;
+	}
+.leaflet-control-scale-line:not(:first-child) {
+	border-top: 2px solid #777;
+	border-bottom: none;
+	margin-top: -2px;
+	}
+.leaflet-control-scale-line:not(:first-child):not(:last-child) {
+	border-bottom: 2px solid #777;
+	}
+
+.leaflet-touch .leaflet-control-attribution,
+.leaflet-touch .leaflet-control-layers,
+.leaflet-touch .leaflet-bar {
+	box-shadow: none;
+	}
+.leaflet-touch .leaflet-control-layers,
+.leaflet-touch .leaflet-bar {
+	border: 2px solid rgba(0,0,0,0.2);
+	background-clip: padding-box;
+	}
+
+
+/* popup */
+
+.leaflet-popup {
+	position: absolute;
+	text-align: center;
+	margin-bottom: 20px;
+	}
+.leaflet-popup-content-wrapper {
+	padding: 1px;
+	text-align: left;
+	border-radius: 12px;
+	}
+.leaflet-popup-content {
+	margin: 13px 24px 13px 20px;
+	line-height: 1.3;
+	font-size: 13px;
+	font-size: 1.08333em;
+	min-height: 1px;
+	}
+.leaflet-popup-content p {
+	margin: 17px 0;
+	margin: 1.3em 0;
+	}
+.leaflet-popup-tip-container {
+	width: 40px;
+	height: 20px;
+	position: absolute;
+	left: 50%;
+	margin-top: -1px;
+	margin-left: -20px;
+	overflow: hidden;
+	pointer-events: none;
+	}
+.leaflet-popup-tip {
+	width: 17px;
+	height: 17px;
+	padding: 1px;
+
+	margin: -10px auto 0;
+	pointer-events: auto;
+
+	-webkit-transform: rotate(45deg);
+	   -moz-transform: rotate(45deg);
+	    -ms-transform: rotate(45deg);
+	        transform: rotate(45deg);
+	}
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+	background: white;
+	color: #333;
+	box-shadow: 0 3px 14px rgba(0,0,0,0.4);
+	}
+.leaflet-container a.leaflet-popup-close-button {
+	position: absolute;
+	top: 0;
+	right: 0;
+	border: none;
+	text-align: center;
+	width: 24px;
+	height: 24px;
+	font: 16px/24px Tahoma, Verdana, sans-serif;
+	color: #757575;
+	text-decoration: none;
+	background: transparent;
+	}
+.leaflet-container a.leaflet-popup-close-button:hover,
+.leaflet-container a.leaflet-popup-close-button:focus {
+	color: #585858;
+	}
+.leaflet-popup-scrolled {
+	overflow: auto;
+	}
+
+.leaflet-oldie .leaflet-popup-content-wrapper {
+	-ms-zoom: 1;
+	}
+.leaflet-oldie .leaflet-popup-tip {
+	width: 24px;
+	margin: 0 auto;
+
+	-ms-filter: "progid:DXImageTransform.Microsoft.Matrix(M11=0.70710678, M12=0.70710678, M21=-0.70710678, M22=0.70710678)";
+	filter: progid:DXImageTransform.Microsoft.Matrix(M11=0.70710678, M12=0.70710678, M21=-0.70710678, M22=0.70710678);
+	}
+
+.leaflet-oldie .leaflet-control-zoom,
+.leaflet-oldie .leaflet-control-layers,
+.leaflet-oldie .leaflet-popup-content-wrapper,
+.leaflet-oldie .leaflet-popup-tip {
+	border: 1px solid #999;
+	}
+
+
+/* div icon */
+
+.leaflet-div-icon {
+	background: #fff;
+	border: 1px solid #666;
+	}
+
+
+/* Tooltip */
+/* Base styles for the element that has a tooltip */
+.leaflet-tooltip {
+	position: absolute;
+	padding: 6px;
+	background-color: #fff;
+	border: 1px solid #fff;
+	border-radius: 3px;
+	color: #222;
+	white-space: nowrap;
+	-webkit-user-select: none;
+	-moz-user-select: none;
+	-ms-user-select: none;
+	user-select: none;
+	pointer-events: none;
+	box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+	}
+.leaflet-tooltip.leaflet-interactive {
+	cursor: pointer;
+	pointer-events: auto;
+	}
+.leaflet-tooltip-top:before,
+.leaflet-tooltip-bottom:before,
+.leaflet-tooltip-left:before,
+.leaflet-tooltip-right:before {
+	position: absolute;
+	pointer-events: none;
+	border: 6px solid transparent;
+	background: transparent;
+	content: "";
+	}
+
+/* Directions */
+
+.leaflet-tooltip-bottom {
+	margin-top: 6px;
+}
+.leaflet-tooltip-top {
+	margin-top: -6px;
+}
+.leaflet-tooltip-bottom:before,
+.leaflet-tooltip-top:before {
+	left: 50%;
+	margin-left: -6px;
+	}
+.leaflet-tooltip-top:before {
+	bottom: 0;
+	margin-bottom: -12px;
+	border-top-color: #fff;
+	}
+.leaflet-tooltip-bottom:before {
+	top: 0;
+	margin-top: -12px;
+	margin-left: -6px;
+	border-bottom-color: #fff;
+	}
+.leaflet-tooltip-left {
+	margin-left: -6px;
+}
+.leaflet-tooltip-right {
+	margin-left: 6px;
+}
+.leaflet-tooltip-left:before,
+.leaflet-tooltip-right:before {
+	top: 50%;
+	margin-top: -6px;
+	}
+.leaflet-tooltip-left:before {
+	right: 0;
+	margin-right: -12px;
+	border-left-color: #fff;
+	}
+.leaflet-tooltip-right:before {
+	left: 0;
+	margin-left: -12px;
+	border-right-color: #fff;
+	}
+
+/* Printing */
+
+@media print {
+	/* Prevent printers from removing background-images of controls. */
+	.leaflet-control {
+		-webkit-print-color-adjust: exact;
+		print-color-adjust: exact;
+		}
+	}
+
+/* HARD DECK. Colour follows cockpit display convention: green = the live value, cyan = things you can
+   set, magenta = the reference bug, amber = caution, red = warning, white/ink = scales and text. */
+:root{
+  --r:6px;
+  --disp:"DIN Alternate","Bahnschrift","Roboto Condensed","Avenir Next Condensed","Arial Narrow",system-ui,sans-serif;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+}
+html[data-theme=night]{
+  --bg:#16212B; --panel:#1D2B38; --panel2:#243443; --rule:#34485A; --ink:#EAF0F4; --dim:#9DB1C0;
+  --green:#6BE39A; --cyan:#5CCFE6; --mag:#D19BFF; --amber:#F2B955; --red:#FF7B74; --ground:#3B3229; --brown:#C39A72;
+  --shadow:0 8px 24px rgba(0,0,0,.45); color-scheme:dark;
+}
+html[data-theme=day]{
+  --bg:#EDF0F2; --panel:#FFFFFF; --panel2:#F3F6F8; --rule:#CBD4DB; --ink:#13212B; --dim:#506473;
+  --green:#157A40; --cyan:#0A6F86; --mag:#7B36B5; --amber:#9A5B00; --red:#B92C28; --ground:#EADFCF; --brown:#8A5A3C;
+  --shadow:0 8px 24px rgba(19,33,43,.18); color-scheme:light;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:16px/1.5 var(--sans);font-variant-numeric:tabular-nums;overflow-x:hidden}
+h1,h2,h3{font-family:var(--disp);font-weight:700;margin:0;letter-spacing:.02em}
+h2{font-size:19px;margin-bottom:10px}
+h3{font-size:16px;margin:18px 0 6px}
+p{margin:0 0 10px;max-width:72ch}
+a{color:var(--cyan)}
+button,select,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+svg{display:block}
+[hidden]{display:none!important}
+
+/* ---------- top bar and tabs ---------- */
+.bar{position:sticky;top:0;z-index:1200;display:flex;align-items:center;gap:10px;padding:8px 12px;padding-top:calc(8px + env(safe-area-inset-top));background:var(--panel);border-bottom:1px solid var(--rule)}
+.brand{display:flex;align-items:center;gap:9px;text-decoration:none;color:var(--ink);font:700 20px/1 var(--disp);letter-spacing:.14em;white-space:nowrap}
+.brand svg{color:var(--green)}
+.bar-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.status{border:1px solid var(--rule);background:var(--panel2);border-radius:999px;padding:6px 12px 6px 10px;font:700 12px/1 var(--disp);letter-spacing:.1em;cursor:pointer;display:flex;align-items:center;gap:7px;min-height:34px}
+.status i{width:8px;height:8px;border-radius:50%;background:var(--dim)}
+.status.on i{background:var(--green)} .status.emcon{border-color:var(--amber);color:var(--amber)} .status.emcon i{background:var(--amber)}
+.iconbtn{width:40px;height:40px;display:grid;place-items:center;border:1px solid var(--rule);background:var(--panel2);border-radius:var(--r);cursor:pointer;flex:none}
+.iconbtn.solid{background:var(--cyan);border-color:var(--cyan);color:var(--panel)}
+.tabs{position:fixed;left:0;right:0;bottom:0;z-index:1200;display:grid;grid-template-columns:repeat(4,1fr);background:var(--panel);border-top:1px solid var(--rule);padding-bottom:env(safe-area-inset-bottom)}
+.tabs button{background:none;border:0;min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:var(--dim);font:700 12px/1 var(--disp);letter-spacing:.12em;text-transform:uppercase;cursor:pointer;border-top:3px solid transparent}
+.tabs button[aria-selected=true]{color:var(--cyan);border-top-color:var(--cyan)}
+main{padding:12px 12px calc(84px + env(safe-area-inset-bottom));max-width:1400px;margin:0 auto}
+section.tab{display:none} section.tab.on{display:block}
+
+/* ---------- layout ---------- */
+.cols{display:grid;gap:12px}
+.side,.main{display:grid;gap:12px;align-content:start;min-width:0}
+.panel{background:var(--panel);border:1px solid var(--rule);border-radius:var(--r);padding:14px;min-width:0}
+details.fold>summary{display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;list-style:none}
+details.fold>summary::-webkit-details-marker{display:none}
+details.fold>summary h2{margin:0}
+details.fold>summary::after{content:"";width:9px;height:9px;border-right:2px solid var(--dim);border-bottom:2px solid var(--dim);transform:rotate(45deg);flex:none;margin:0 4px 4px}
+details.fold[open]>summary::after{transform:rotate(225deg);margin:4px 4px 0}
+details.fold[open]>summary{margin-bottom:10px}
+details.more{margin-top:6px} details.more summary{cursor:pointer;color:var(--cyan);font-size:14px}
+label{display:block;font-size:14px;color:var(--dim);margin:12px 0 4px}
+input[type=text],input[type=number],select{width:100%;min-height:44px;padding:8px 10px;border:1px solid var(--rule);border-radius:var(--r);background:var(--panel2);font-size:16px}
+.inrow{display:flex;gap:8px}.inrow>input,.inrow>select{flex:1;min-width:0}
+.hint{font-size:13px;color:var(--dim)}
+.err{color:var(--red);font-size:14px}
+.err:empty{display:none}
+.btn{background:var(--panel2);border:1px solid var(--rule);border-radius:var(--r);padding:9px 14px;min-height:44px;cursor:pointer;font-weight:600}
+.btn.primary{background:var(--cyan);border-color:var(--cyan);color:var(--panel)}
+.btn.armed{border-color:var(--amber);color:var(--amber)}
+.btn.small{min-height:36px;padding:5px 10px;font-size:14px}
+.btnrow{display:flex;flex-wrap:wrap;gap:8px}
+.term{border-bottom:1px dotted var(--dim);cursor:help}
+[data-tip]{cursor:help}
+#tip{position:fixed;display:none;z-index:3000;max-width:min(340px,calc(100vw - 16px));background:var(--ink);color:var(--panel);padding:10px 12px;border-radius:var(--r);font-size:14px;line-height:1.45;box-shadow:var(--shadow);pointer-events:none}
+#toast{position:fixed;left:50%;bottom:calc(76px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:3000;background:var(--ink);color:var(--panel);padding:9px 14px;border-radius:999px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw;text-align:center}
+#toast.show{opacity:1}
+.badge{display:inline-block;font-size:12px;font-weight:600;padding:1px 8px;border-radius:10px;border:1px solid var(--cyan);color:var(--cyan);white-space:nowrap}
+.badge.warn{border-color:var(--amber);color:var(--amber)} .badge.bad{border-color:var(--red);color:var(--red)} .badge.ok{border-color:var(--green);color:var(--green)}
+.sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:7px;flex:none}
+.empty{border:1px dashed var(--dim);border-radius:var(--r);padding:14px;font-size:15px}
+.flag{border-left:4px solid var(--amber);padding-left:10px}
+.flag.bad{border-left-color:var(--red)}
+.printonly{display:none}
+
+/* ---------- chips (source switches) ---------- */
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chipbtn{display:flex;align-items:center;gap:0;border:1px solid var(--rule);background:var(--panel2);border-radius:999px;padding:7px 12px 7px 10px;min-height:38px;cursor:pointer;font-size:14px;color:var(--dim)}
+.chipbtn[aria-pressed=true]{color:var(--ink);border-color:var(--cyan)}
+.chipbtn[aria-pressed=false] .sw{opacity:.3}
+.chipbtn small{margin-left:6px;color:var(--dim);font-size:12px}
+
+/* ---------- map ---------- */
+.map{height:250px;border-radius:var(--r);border:1px solid var(--rule);background:var(--panel2);z-index:0}
+.map.tall{height:min(52vh,340px)}
+.mapnote{background:var(--panel2);border-left:4px solid var(--amber);border-radius:0 var(--r) var(--r) 0;padding:9px 12px;font-size:14px;margin-top:8px}
+.maplinks{font-size:13px;margin-top:6px;color:var(--dim)}
+.maptools{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0;font-size:14px;color:var(--dim)}
+.maptools input[type=range]{flex:1;min-width:120px;max-width:240px;accent-color:var(--cyan)}
+.leaflet-container{font-family:var(--sans)}
+.leaflet-control-layers{border-radius:var(--r)!important;color:#13212B}
+.leaflet-control-layers label{margin:3px 0;color:#13212B;font-size:14px}
+.leaflet-control-layers-toggle{width:40px!important;height:40px!important;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2313212B' stroke-width='2' stroke-linejoin='round'%3E%3Cpath d='M12 4l9 5-9 5-9-5z'/%3E%3Cpath d='M3 14l9 5 9-5'/%3E%3C/svg%3E") center/24px no-repeat!important;border-radius:var(--r)}
+.leaflet-bar a{width:36px!important;height:36px!important;line-height:36px!important}
+
+/* ---------- result ---------- */
+.hero{display:grid;gap:14px}
+.ro{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}
+.ro-box{border:2px solid var(--green);color:var(--green);border-radius:4px;padding:4px 14px 2px;font:700 52px/1.05 var(--disp);letter-spacing:.02em;display:flex;align-items:baseline;gap:6px}
+.ro-box small{font-size:22px;font-weight:600}
+.ro-ft{font:600 26px/1.3 var(--disp);color:var(--ink)}
+.ro-ref{margin-top:6px;color:var(--dim);font-size:15px}
+.ro-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.ro-msg{font:600 20px/1.3 var(--disp)}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--rule);border-radius:var(--r);overflow:hidden;margin-top:14px}
+.seg button{background:var(--panel2);border:0;border-right:1px solid var(--rule);min-height:44px;font:700 12px/1.15 var(--disp);letter-spacing:.08em;text-transform:uppercase;color:var(--dim);cursor:pointer;padding:4px}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed=true]{background:var(--cyan);color:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:right;padding:7px 8px;border-bottom:1px solid var(--rule);vertical-align:top}
+th:first-child,td:first-child{text-align:left}
+th{font-weight:600;color:var(--dim);font-size:13px}
+td.l,th.l{text-align:left}
+.reft{margin-top:10px}
+.reft td{padding:6px 4px}
+.reft tr.sel td{color:var(--green);font-weight:700}
+.reft td small{display:block;color:var(--dim);font-weight:400;font-size:12px}
+.tablewrap{overflow-x:auto}
+
+/* ---------- difference steps ---------- */
+.steps{display:grid;gap:12px}
+.step{display:grid;gap:12px;border:1px solid var(--rule);border-radius:var(--r);background:var(--panel2);padding:14px;break-inside:avoid;min-width:0}
+.stephead{display:flex;gap:10px;align-items:center;font:700 17px/1.2 var(--disp);margin-bottom:8px}
+.stepno{width:26px;height:26px;border-radius:50%;border:2px solid var(--cyan);color:var(--cyan);display:inline-grid;place-items:center;font-size:14px;flex:none}
+.big{font:700 32px/1.1 var(--disp);margin:4px 0 2px}
+.big small{font:400 14px var(--sans);color:var(--dim)}
+.pair .big{font-size:clamp(22px,7.4vw,32px)}
+.pair .big small,.big small.blk{display:block;margin-top:3px}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:2px 0 8px}
+.steptxt p{font-size:14px;margin:8px 0 0;max-width:56ch}
+.stepfig{min-width:0}
+.stepfig svg{width:100%;height:auto;max-width:460px;margin:0 auto}
+.difflist{margin:8px 0 0;padding:0;list-style:none;font-size:14px}
+.difflist li{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:6px 0;border-bottom:1px solid var(--rule)}
+.difflist li>span{display:flex;align-items:center;min-width:0}
+.difflist b{white-space:nowrap}
+#meaning p{margin-bottom:10px;max-width:86ch;font-size:15px}
+.facts{display:grid;grid-template-columns:auto 1fr;gap:3px 14px;font-size:14px;margin:8px 0 0}
+.facts dt{color:var(--dim)} .facts dd{margin:0}
+.kv{display:grid;grid-template-columns:1fr auto;gap:4px 14px;font-size:14px;margin:0}
+.kv dt{color:var(--dim)} .kv dd{margin:0;text-align:right}
+
+/* ---------- chart classes (theme aware) ---------- */
+.t-ink{fill:var(--ink)} .t-dim{fill:var(--dim)} .t-cyan{fill:var(--cyan)} .t-green{fill:var(--green)} .t-mag{fill:var(--mag)} .t-amber{fill:var(--amber)} .t-brown{fill:var(--brown)}
+.halo{paint-order:stroke;stroke:var(--panel2);stroke-width:4px;stroke-linejoin:round}
+.l-ink{stroke:var(--ink)} .l-dim{stroke:var(--dim)} .l-rule{stroke:var(--rule)} .l-cyan{stroke:var(--cyan)} .l-green{stroke:var(--green)} .l-mag{stroke:var(--mag)} .l-amber{stroke:var(--amber)} .l-brown{stroke:var(--brown)}
+.f-panel{fill:var(--panel)} .f-panel2{fill:var(--panel2)} .f-ground{fill:var(--ground)} .f-green{fill:var(--green)} .f-cyan{fill:var(--cyan)} .f-mag{fill:var(--mag)} .f-ink{fill:var(--ink)} .f-none{fill:none}
+svg text{font-family:var(--sans)}
+svg text.disp{font-family:var(--disp)}
+
+/* ---------- area ---------- */
+.pickrow{display:grid;gap:8px;margin-bottom:10px}
+.areagrid{display:grid;gap:16px}
+.cv canvas{width:100%;height:auto;display:block;border:1px solid var(--rule);border-radius:var(--r);background:var(--panel2);cursor:crosshair;touch-action:manipulation}
+.legend{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--dim);margin-top:6px}
+.legend canvas{flex:1 1 0;min-width:0;width:0;height:12px;border-radius:3px;border:1px solid var(--rule)}
+.readout{font-size:14px;min-height:1.5em;margin:6px 0}
+.figs2{display:grid;gap:12px;margin-top:14px}
+.fig{border:1px solid var(--rule);border-radius:var(--r);background:var(--panel2);padding:10px;margin:0;min-width:0}
+.fig svg{width:100%;height:auto}
+.fig figcaption{font-size:13px;color:var(--dim);margin-top:6px}
+progress{width:100%;accent-color:var(--cyan)}
+
+/* ---------- data ---------- */
+.drop{border:2px dashed var(--cyan);border-radius:var(--r);padding:22px 14px;text-align:center;background:var(--panel2);cursor:pointer}
+.drop.over{background:var(--panel)}
+.filecard{border:1px solid var(--rule);border-radius:var(--r);padding:12px;margin-top:10px;background:var(--panel2)}
+.filecard .fname{font-weight:600;word-break:break-all}
+.filecard .frow{display:grid;gap:8px;margin-top:8px}
+.switch{display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px solid var(--rule);cursor:pointer;margin:0;color:var(--ink);font-size:15px}
+.switch input{width:22px;height:22px;flex:none;margin-top:2px;accent-color:var(--cyan)}
+.switch .hint{display:block}
+
+/* ---------- brief ---------- */
+.brief{max-width:880px;margin:0 auto;display:grid;gap:12px}
+.brief details{background:var(--panel);border:1px solid var(--rule);border-radius:var(--r);padding:0 14px}
+.brief summary{cursor:pointer;font:700 18px/1.3 var(--disp);padding:14px 0;list-style:none;display:flex;justify-content:space-between;gap:10px}
+.brief summary::-webkit-details-marker{display:none}
+.brief summary::after{content:"+";color:var(--cyan);font-size:22px;line-height:1}
+.brief details[open] summary::after{content:"−"}
+.brief details>*:not(summary){margin-bottom:14px}
+.brief li{margin-bottom:6px;max-width:76ch}
+.brief ul,.brief ol{padding-left:20px;margin:0 0 10px}
+.brief td,.brief th{text-align:left}
+
+/* ---------- phone order: where, answer, map, sources, then the rest ---------- */
+@media(max-width:999px){
+  #tab-point .side,#tab-point .main,#tab-area .side,#tab-area .main{display:contents}
+  #tab-point .panel{order:5} #tab-point #locPanel{order:1} #tab-point #heroPanel{order:2} #tab-point #srcPanel{order:3}
+  #tab-area #aMapPanel{order:1} #tab-area #aCtl{order:2} #tab-area #aResPanel{order:3}
+}
+@media(max-width:719px){ .hero>div:first-child{order:2} }
+.leaflet-bottom.leaflet-right{max-width:calc(100% - 96px)}
+.leaflet-control-attribution{font-size:10px!important;line-height:1.3!important}
+th,td:not(:first-child):not(.l){white-space:nowrap}
+
+/* ---------- small-screen tables become cards ---------- */
+@media(max-width:719px){
+  table.resp thead{display:none}
+  table.resp tr{display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;padding:10px 0;border-bottom:1px solid var(--rule)}
+  table.resp td{border:0;padding:2px 0;text-align:left;white-space:normal!important}
+  table.resp td:first-child{grid-column:1/-1;font-weight:600;font-size:15px}
+  table.resp td[data-l]::before{content:attr(data-l);display:block;color:var(--dim);font-size:12px;font-weight:400}
+  table.resp td:empty{display:none}
+}
+
+@media(max-width:379px){ .brand{font-size:17px;letter-spacing:.08em;gap:6px} .brand svg{width:24px;height:24px} .status{padding:6px 9px 6px 8px;letter-spacing:.06em} .bar{gap:6px;padding-left:10px;padding-right:10px} main{padding-left:8px;padding-right:8px} .panel{padding:12px} .ro-box{font-size:46px} }
+.tagline{display:none;color:var(--dim);font-size:13px;margin-left:4px;white-space:nowrap}
+#aDiff th,#aDiff td,#aTerr th,#aTerr td{padding:7px 5px}
+
+/* ---------- wider screens ---------- */
+@media(min-width:720px){
+  .map{height:300px} .map.tall{height:400px}
+  .hero{grid-template-columns:minmax(0,1.25fr) minmax(280px,1fr);align-items:center}
+  .step{grid-template-columns:minmax(240px,1fr) minmax(280px,1.2fr);align-items:center;padding:16px 18px}
+  .pickrow{grid-template-columns:repeat(3,1fr)}
+  .figs2{grid-template-columns:1fr 1fr}
+  .filecard .frow{grid-template-columns:1fr 1fr}
+}
+@media(min-width:1000px){
+  .bar{padding:10px 24px}
+  .tabs{position:static;display:flex;border:0;background:none;padding:0;margin-left:14px;gap:2px}
+  .tabs button{flex-direction:row;min-height:40px;padding:0 14px;border-top:0;border-bottom:3px solid transparent;gap:8px;font-size:13px}
+  .tabs button[aria-selected=true]{border-bottom-color:var(--cyan)}
+  main{padding:20px 24px 60px}
+  .cols{grid-template-columns:340px minmax(0,1fr);gap:16px}
+  #tab-point .side,#tab-area .side{position:sticky;top:76px;max-height:calc(100vh - 92px);overflow:auto}
+  .panel{padding:18px}
+  .side,.main{gap:16px}
+  .areagrid{grid-template-columns:minmax(260px,.85fr) minmax(430px,1.25fr)}
+  #toast{bottom:24px}
+  .ro-box{font-size:60px}
+}
+@media(min-width:1280px){ .tagline{display:inline} }
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ---------- print: always the day colours, no controls ---------- */
+@media print{
+  html[data-theme]{--bg:#fff;--panel:#fff;--panel2:#fff;--rule:#B9C3CA;--ink:#111;--dim:#444;--green:#0E6B36;--cyan:#075E72;--mag:#6A2DA0;--amber:#7A4700;--red:#A01F1C;--ground:#EADFCF;--brown:#7A4E33}
+  body{font-size:11.5px;background:#fff}
+  .bar .tabs,.bar-right,.noprint,.leaflet-control-container,#tip,#toast,.side,#tab-data,#tab-brief{display:none!important}
+  .bar{position:static;border:0;padding:0 0 6px}
+  main{padding:0;max-width:none}
+  section.tab{display:block!important}
+  #tab-area:not(.has-result){display:none!important}
+  .cols{display:block}
+  .panel{border:0;padding:0;margin:0 0 10px}
+  .printonly{display:block}
+  .hero{grid-template-columns:1.1fr 1fr}
+  .map{height:230px} #amap{display:none}
+  .step{grid-template-columns:1fr 1.1fr;padding:8px 10px;align-items:center}
+  .steps{gap:8px}
+  .areagrid{grid-template-columns:240px minmax(0,1fr)}
+  .figs2{grid-template-columns:1fr 1fr}
+  .step,.fig,tr,.hero,#dtedPanel{break-inside:avoid}
+  th,td{padding:3px 5px}
+  .tablewrap{overflow:visible}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+
+</style>
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="#point" aria-label="HARD DECK, go to the Point page">
+    <svg width="30" height="30" viewBox="0 0 30 30" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="15" cy="9" r="3.4"/><path d="M4 9h7.6M18.4 9H26M15 5.6V2.5"/><path d="M2 22h26" stroke-dasharray="3.5 3"/><path d="M3 27l6-8 4 4 4-6 5 6 5-3" opacity=".85"/></svg>
+    <span>HARD DECK</span>
+  </a>
+  <span class="tagline">terrain height, cross-checked</span>
+  <nav class="tabs" role="tablist" aria-label="Pages">
+    <button role="tab" data-tab="point" aria-selected="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="6"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></svg><span>Point</span></button>
+    <button role="tab" data-tab="area" aria-selected="false"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" stroke-dasharray="4 3"/><path d="M7 16l3.5-5 2.5 3 2-2.5 2 4.5"/></svg><span>Area</span></button>
+    <button role="tab" data-tab="data" aria-selected="false"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></svg><span>Data</span></button>
+    <button role="tab" data-tab="brief" aria-selected="false"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"/><path d="M9 11h7M9 15h7M9 7h3"/></svg><span>Brief</span></button>
+  </nav>
+  <div class="bar-right">
+    <button class="status" id="netChip" aria-live="polite"><i></i><span>OFFLINE</span></button>
+    <button class="iconbtn" id="themeBtn" aria-label="Switch between day and night colours"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor"/></svg></button>
+  </div>
+</header>
+
+<main>
+<!-- ============================ POINT ============================ -->
+<section class="tab on" id="tab-point">
+ <div class="cols">
+  <aside class="side">
+   <div class="panel" id="locPanel">
+    <h2>Where</h2>
+    <label for="coord">Coordinates, WGS84</label>
+    <div class="inrow">
+      <input type="text" id="coord" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="go" placeholder="26.2933, 78.2278">
+      <button class="iconbtn solid" id="bLocate" aria-label="Use my location" data-tip="Fill in where this device is now. If the device also reports a height, it is entered below as the GPS height."><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" aria-hidden="true"><path d="M21 3L10 14M21 3l-7 18-4-7-7-4z"/></svg></button>
+    </div>
+    <div class="hint" id="coordRead" style="margin-top:6px"></div>
+    <div class="err" id="coordErr"></div>
+    <details class="more"><summary>Formats it understands</summary><div class="hint" style="margin-top:6px">26.2933, 78.2278<br>N26 17.598 E078 13.668<br>26°17′36″N 78°13′40″E<br>261736N 0781340E<br>You can also tap the map.</div></details>
+    <details class="more" id="gpsBox"><summary>Compare a GPS height</summary>
+    <label for="gpsH"><span class="term" data-tip="Optional. Enter a height read from a GNSS receiver to see how it compares with the terrain models. It is never used to compute the answer. Pick what the receiver shows: aviation and handheld units and iPhones show height above mean sea level; raw GNSS output and Android give height above the ellipsoid.">GPS height in metres</span></label>
+    <div class="inrow">
+      <input type="number" id="gpsH" inputmode="decimal" step="any" placeholder="for example 131">
+      <select id="gpsRef" aria-label="What the GPS height is measured from">
+        <option value="hae">above ellipsoid</option>
+        <option value="egm96">above MSL (EGM96)</option>
+        <option value="egm2008">above MSL (EGM2008)</option>
+      </select>
+    </div>
+    <div class="hint" id="gpsNote"></div>
+    </details>
+   </div>
+   <details class="panel fold" id="srcPanel">
+    <summary><h2>Sources</h2><span class="hint" id="srcCount"></span></summary>
+    <div id="srcChecks" class="chips"></div>
+    <div class="hint" id="srcHint" style="margin-top:8px"></div>
+   </details>
+  </aside>
+
+  <div class="main">
+   <div class="panel" id="heroPanel">
+    <div class="printonly" id="printHead"></div>
+    <div class="hero">
+      <div>
+        <div id="map" class="map"></div>
+        <div class="mapnote" hidden></div>
+        <div class="maplinks noprint">Check this spot in <a class="gEarth" target="_blank" rel="noopener">Google Earth</a> or <a class="gMaps" target="_blank" rel="noopener">Google Maps satellite</a></div>
+      </div>
+      <div>
+        <div id="readout"></div>
+        <div class="seg noprint" id="refSeg" role="group" aria-label="Show the height above">
+          <button data-ref="egm96" data-tip="Mean sea level using the EGM96 geoid. Charts, DTED, ICAO airfield data and most avionics databases use this.">MSL<br>EGM96</button>
+          <button data-ref="egm2008" data-tip="Mean sea level using the newer EGM2008 geoid. Copernicus heights use this. It differs from EGM96 by well under a metre over most of India.">MSL<br>EGM2008</button>
+          <button data-ref="hae" data-tip="Height above the smooth WGS84 ellipsoid: what a GNSS receiver measures before any geoid correction. In India it is 25 to 100 m lower than the sea-level height.">WGS84<br>ellipsoid</button>
+        </div>
+        <table class="reft" id="refTable"></table>
+      </div>
+    </div>
+   </div>
+
+   <div class="panel">
+    <h2>Main differences at this point</h2>
+    <div class="steps">
+      <div class="step"><div class="steptxt" id="st1"></div><div class="stepfig"><svg id="figLevels" viewBox="0 0 440 270" role="img" aria-label="Ellipsoid, sea level and ground at this point"></svg></div></div>
+      <div class="step"><div class="steptxt" id="st2"></div><div class="stepfig"><svg id="figGeoids" viewBox="0 0 440 180" role="img" aria-label="EGM96 and EGM2008 sea-level surfaces compared"></svg></div></div>
+      <div class="step"><div class="steptxt" id="st3"></div><div class="stepfig"><svg id="figTape" viewBox="0 0 440 320" role="img" aria-label="Height tape showing each terrain source"></svg></div></div>
+    </div>
+   </div>
+
+   <div class="panel" id="dtedPanel" hidden>
+    <h2>DTED cross-check</h2>
+    <div id="dtedCheck"></div>
+   </div>
+
+   <div class="panel">
+    <h2>What this means here</h2>
+    <div id="meaning"></div>
+   </div>
+
+   <div class="panel">
+    <h2>Every source in every reference</h2>
+    <div class="tablewrap"><table class="resp" id="ptTable"></table></div>
+    <div id="ptEmpty"></div>
+   </div>
+
+   <div class="panel noprint">
+    <h2>Report</h2>
+    <div class="btnrow">
+      <button class="btn" id="bShare">Share summary</button>
+      <button class="btn" id="bCopy">Copy summary</button>
+      <button class="btn" id="bLink">Copy link to this point</button>
+      <button class="btn" id="bPrint">Print</button>
+      <button class="btn" id="bCsv">Save CSV</button>
+      <button class="btn" id="bJson">Save JSON</button>
+    </div>
+   </div>
+  </div>
+ </div>
+</section>
+
+<!-- ============================ AREA ============================ -->
+<section class="tab" id="tab-area">
+ <div class="cols">
+  <aside class="side noprint">
+   <div class="panel" id="aCtl">
+    <h2>Area</h2>
+    <label for="aCoord">Centre, WGS84</label>
+    <input type="text" id="aCoord" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="go">
+    <div class="err" id="aCoordErr"></div>
+    <label for="aSize">Extent</label>
+    <select id="aSize">
+      <option value="2">2 km square around the centre</option><option value="5">5 km square</option><option value="10" selected>10 km square</option>
+      <option value="25">25 km square</option><option value="50">50 km square</option><option value="100">100 km square</option>
+      <option value="corners">Two corners I type or draw</option><option value="map">Whatever the map shows</option>
+    </select>
+    <div id="aCorners" hidden>
+      <label for="aSW">South-west corner</label><input type="text" id="aSW" autocomplete="off" spellcheck="false" placeholder="26.20, 78.15">
+      <label for="aNE">North-east corner</label><input type="text" id="aNE" autocomplete="off" spellcheck="false" placeholder="26.35, 78.32">
+    </div>
+    <div style="margin-top:12px"><button class="btn" id="bDraw" data-tip="Press this, then drag a box on the map with a finger or the mouse. The corners are filled in for you.">Draw the area on the map</button></div>
+    <label for="aRes"><span class="term" data-tip="How many sample points the area is divided into. More points show finer terrain but take longer and download more when online sources are used.">Sampling grid</span></label>
+    <select id="aRes"><option value="120">120 × 120, quick</option><option value="240">240 × 240</option><option value="400">400 × 400, detailed</option></select>
+    <div style="margin-top:14px"><button class="btn primary" id="bRun" style="width:100%">Study this area</button></div>
+    <div class="err" id="aErr" style="margin-top:8px"></div>
+    <progress id="aProg" value="0" max="1" hidden></progress>
+   </div>
+  </aside>
+  <div class="main">
+   <div class="panel" id="aMapPanel">
+     <div id="amap" class="map tall"></div>
+     <div class="mapnote" hidden></div>
+     <div class="maptools noprint" id="aTools" hidden><label for="aOp" style="margin:0">Result over the map</label><input type="range" id="aOp" min="0" max="100" value="70" aria-label="How strongly the result covers the satellite picture"></div>
+   </div>
+   <div class="panel" id="aResPanel">
+     <div class="empty" id="aEmpty"><strong>No area studied yet.</strong> Check that the dashed box on the map covers what you want, then press “Study this area”.</div>
+     <div id="aRes1" hidden>
+      <h2 id="aTitle"></h2>
+      <div class="pickrow noprint">
+        <select id="aLayer" aria-label="What to show"></select>
+        <select id="aA" aria-label="Model A"></select>
+        <select id="aB" aria-label="Model B"></select>
+      </div>
+      <div class="areagrid">
+       <div>
+        <div class="cv"><canvas id="aCanvas" width="240" height="240"></canvas></div>
+        <div class="legend"><span id="lgMin"></span><canvas id="lgBar" width="256" height="1"></canvas><span id="lgMax"></span></div>
+        <div class="readout" id="aRead">Tap or move over the picture to read a value.</div>
+        <div class="btnrow noprint"><button class="btn small" id="bUseSpot" disabled>Use this spot as the point</button><button class="btn small" id="bPng">Save this picture</button></div>
+       </div>
+       <div>
+        <h3 style="margin-top:0">Geoid across the area</h3>
+        <dl class="kv" id="aGeoid"></dl>
+        <h3>Terrain</h3>
+        <div class="tablewrap"><table class="resp" id="aTerr"></table></div>
+        <h3>Disagreement between models</h3>
+        <div class="inrow noprint" style="align-items:center;margin-bottom:6px"><span class="hint" style="flex:0 0 auto">Compared with</span><select id="aRef" aria-label="Reference model"></select></div>
+        <div class="tablewrap"><table class="resp" id="aDiff"></table></div>
+        <div class="hint" style="margin-top:6px">Every model is first converted to the same vertical reference, so these figures do not contain geoid offsets.</div>
+       </div>
+      </div>
+      <div class="figs2">
+        <figure class="fig"><svg id="figProf" viewBox="0 0 560 290" role="img" aria-label="Terrain profile"></svg><figcaption><span id="capProf"></span> <button class="btn small noprint" id="bProfDir">Switch to north–south</button></figcaption></figure>
+        <figure class="fig"><svg id="figHist" viewBox="0 0 560 290" role="img" aria-label="Histogram of the layer shown"></svg><figcaption id="capHist"></figcaption></figure>
+      </div>
+     </div>
+   </div>
+  </div>
+ </div>
+</section>
+
+<!-- ============================ DATA ============================ -->
+<section class="tab" id="tab-data">
+ <div class="cols">
+  <aside class="side">
+   <div class="panel">
+    <h2>Connection</h2>
+    <p id="netText" class="hint" style="font-size:15px"></p>
+    <label class="switch"><input type="checkbox" id="emcon"><span><strong>EMCON: no coordinate leaves this device</strong><span class="hint">No elevation lookups, no map pictures, no location service, and the last point is not remembered. Only the built-in geoids and files you load are used. Use this for coordinates you would not type into a search engine.</span></span></label>
+    <p class="hint" style="margin-top:10px">With EMCON off, the coordinates you look up go, as map and elevation requests, to OpenTopography, Microsoft Planetary Computer, Open-Meteo, Esri and OpenStreetMap servers. Files you load never leave this device.</p>
+   </div>
+   <div class="panel">
+    <h2>Online sources</h2>
+    <p class="hint">No key and no download. Only the small part of a tile around your point or area is fetched.</p>
+    <div id="liveChecks"></div>
+   </div>
+  </aside>
+  <div class="main">
+   <div class="panel">
+    <h2>Your files</h2>
+    <p>Add DTED (.dt0, .dt1, .dt2), GeoTIFF (.tif) or SRTM (.hgt) tiles. They are read on this device and nothing is uploaded. Extract zip archives first.</p>
+    <div class="drop" id="drop" tabindex="0" role="button">Choose files, or drop them here<input type="file" id="fileIn" multiple hidden></div>
+    <div class="err" id="fErr" style="margin-top:8px"></div>
+    <div id="fList"></div>
+    <div class="hint" id="fTotal" style="margin-top:8px"></div>
+   </div>
+   <div class="panel">
+    <h2>Tiles that cover your point</h2>
+    <p class="hint" id="needFor"></p>
+    <div class="tablewrap"><table class="resp" id="needTable"></table></div>
+    <p class="hint" style="margin-top:10px">A 1° × 1° tile at 30 m is roughly 5 to 55 MB. A 3° × 3° working area is 9 tiles per model. All of India is about 350 to 400 tiles, 8 to 12 GB per model, so download only what you need.</p>
+   </div>
+   <div class="panel">
+    <h2>Terrain models</h2>
+    <div class="tablewrap"><table class="resp" id="catTable"></table></div>
+   </div>
+  </div>
+ </div>
+</section>
+
+<!-- ============================ BRIEF ============================ -->
+<section class="tab" id="tab-brief">
+ <div class="brief">
+  <details open>
+   <summary>The three surfaces every height hangs from</summary>
+   <p>A height is a distance above some surface. Most large height errors come from two sources quoting heights above two different surfaces. Three surfaces matter.</p>
+   <div class="tablewrap"><table class="resp">
+    <thead><tr><th>Surface</th><th>What it is</th><th>Who uses it</th></tr></thead>
+    <tr><td>WGS84 ellipsoid</td><td data-l="What it is">A perfectly smooth, slightly flattened ball chosen to fit the Earth. Pure geometry.</td><td data-l="Who uses it">GNSS satellites and receivers, inertial and GNSS navigation computers internally, radar terrain processing.</td></tr>
+    <tr><td>Geoid: EGM96, EGM2008</td><td data-l="What it is">The shape the sea would take at rest, continued under the land. It follows gravity, so it has bumps and hollows.</td><td data-l="Who uses it">Charts, DTED, airfield elevations, barometric altimetry, anything called “above mean sea level”.</td></tr>
+    <tr><td>Ground</td><td data-l="What it is">The terrain itself, or in a surface model the top of whatever covers it.</td><td data-l="Who uses it">You.</td></tr>
+   </table></div>
+   <p>The gap between the first two is the geoid undulation, N. Sea-level height H equals ellipsoid height h minus N. Over India N is negative everywhere, from about −24 m at Leh to about −97 m at Thiruvananthapuram, because the subcontinent lies on the edge of the Indian Ocean geoid low, the deepest hollow in the geoid anywhere on Earth.</p>
+   <p>EGM96 and EGM2008 are two models of the same geoid. EGM2008 was built with far more gravity data and is the better physical model. EGM96 is the one aviation data, DTED, SRTM and AW3D30 are tied to. Over most of India they differ by 0.2 to 1 m; in the high Himalaya by more.</p>
+  </details>
+
+  <details>
+   <summary>Why two sources disagree about the same spot</summary>
+   <div class="tablewrap"><table class="resp">
+    <thead><tr><th>Cause</th><th>Typical size</th><th>How it shows up here</th></tr></thead>
+    <tr><td>Different vertical reference: ellipsoid against sea level</td><td data-l="Typical size">25 to 100 m in India, nearly constant over a few kilometres</td><td data-l="How it shows up">One source sits apart from the rest by about the value of N. The app flags it. In an Area study its mean offset is large but its spread is small.</td></tr>
+    <tr><td>EGM96 against EGM2008</td><td data-l="Typical size">0.2 to 1 m on plains, 1 to 3 m or more in the Himalaya</td><td data-l="How it shows up">Step 2 on the Point page, and the “EGM2008 minus EGM96” layer in an Area study.</td></tr>
+    <tr><td>Surface model against bare earth</td><td data-l="Typical size">5 to 30 m in forest and towns, near zero on open desert</td><td data-l="How it shows up">Copernicus, AW3D30, NASADEM and SRTM all include trees and buildings. FABDEM removes them and reads lower there.</td></tr>
+    <tr><td>Slope combined with a small sideways error</td><td data-l="Typical size">A 15 m shift on a 30° slope is 9 m of height</td><td data-l="How it shows up">The ± figure widens with the measured slope, and differences in an Area study follow the slope layer.</td></tr>
+    <tr><td>How the sensor sees mountains</td><td data-l="Typical size">10 to 50 m locally</td><td data-l="How it shows up">Radar models (Copernicus, NASADEM, SRTM) have gaps on steep faces that were filled from other data. The optical model (AW3D30) has gaps under snow and cloud.</td></tr>
+    <tr><td>Post spacing</td><td data-l="Typical size">Peaks and ridges read 5 to 30 m low</td><td data-l="How it shows up">A 30 m cell averages a summit with the slopes around it. 90 m data smooths more.</td></tr>
+    <tr><td>Date of the data</td><td data-l="Typical size">Metres on dunes, glaciers and construction sites</td><td data-l="How it shows up">SRTM and NASADEM show February 2000, AW3D30 shows 2006 to 2011, Copernicus shows 2010 to 2015.</td></tr>
+    <tr><td>Whole-metre storage</td><td data-l="Typical size">Up to 0.5 m</td><td data-l="How it shows up">DTED, SRTM, NASADEM and AW3D30 store whole metres. Copernicus stores fractions.</td></tr>
+   </table></div>
+  </details>
+
+  <details>
+   <summary>How HARD DECK arrives at its number</summary>
+   <ol>
+    <li><strong>One common footing.</strong> Each source is converted to height above the ellipsoid using the geoid it was built on. After that, differences between sources are differences in the terrain, with the reference removed.</li>
+    <li><strong>Independent sources only.</strong> Models made from the same satellite data share the same errors, so they count once. The families are TanDEM-X radar (Copernicus GLO-30 and GLO-90, FABDEM, TanDEM-X 90), Shuttle radar (NASADEM, SRTM, the ASF PALSAR DEM), ALOS optical (AW3D30), and a DTED file you load. The most detailed member present speaks for its family.</li>
+    <li><strong>The median.</strong> The estimate is the middle value of those families: with three, one wrong source cannot move it. With two it is their mean, with one it is that source.</li>
+    <li><strong>Files under test.</strong> A raster of your own that the app does not recognise is compared against the estimate and never feeds it, unless it is the only source. A DTED file counts as its own family, except when it matches the Shuttle radar data at the point to within about 3 m: then it is that data, and shares its vote.</li>
+    <li><strong>The ± figure.</strong> It is the larger of two things: half the gap between the independent sources, and a rule of thumb for 30 m models on the slope measured at the point (about 2 m on flat ground, 4 m on gentle slopes, 8 m in hills, 15 m on steep ground, 25 m on very steep ground). It is an honest indication, and it is not a guarantee.</li>
+    <li><strong>Between posts.</strong> Heights between grid posts come from the four posts around the point, weighted by distance.</li>
+    <li><strong>The geoids.</strong> EGM96 is held at 15 arc-minutes and EGM2008 at 2.5 arc-minutes over South Asia (4° to 40°N, 58° to 100°E). Checked against the full EGM96 model at 3,000 random points the built-in values differ from it by about 1 cm (RMS) and by 12 cm at worst. Elsewhere in the world EGM2008 is held at 15 arc-minutes: usually within 10 cm, up to about 0.75 m in the highest mountains, and the app says so when it applies.</li>
+   </ol>
+   <p><strong>Checked against published airfield elevations on 10 November 2026.</strong></p>
+   <div class="tablewrap"><table class="resp">
+    <thead><tr><th>Airfield reference point</th><th>Copernicus</th><th>AW3D30</th><th>NASADEM</th><th>HARD DECK</th><th>Published</th></tr></thead>
+    <tr><td>Gwalior, 26.2933°N 78.2278°E</td><td data-l="Copernicus">187.6 m</td><td data-l="AW3D30">189.6 m</td><td data-l="NASADEM">183.5 m</td><td data-l="HARD DECK">187.6 m, 616 ft</td><td data-l="Published">617 ft</td></tr>
+    <tr><td>Leh, 34.1359°N 77.5465°E</td><td data-l="Copernicus">3262.7 m</td><td data-l="AW3D30">3262.7 m</td><td data-l="NASADEM">3260.0 m</td><td data-l="HARD DECK">3262.7 m, 10,704 ft</td><td data-l="Published">10,682 ft</td></tr>
+   </table></div>
+   <p class="hint">Heights above mean sea level (EGM96). A published airfield elevation belongs to one surveyed spot on the airfield, so on sloping ground such as Leh it need not match the reference point to the metre.</p>
+  </details>
+
+  <details>
+   <summary>DTED, and how to check a DTED file</summary>
+   <p>DTED is a matrix of elevation posts on a latitude and longitude grid, one file for each 1° cell. Each post is a whole number of metres above mean sea level (EGM96), on WGS84 horizontally. The standard is MIL-PRF-89020B.</p>
+   <div class="tablewrap"><table class="resp">
+    <thead><tr><th>Level</th><th>Post spacing</th><th>Posts per cell</th><th>Horizontal objective</th><th>Vertical objective</th></tr></thead>
+    <tr><td>Level 0</td><td data-l="Post spacing">30 arc-seconds, about 900 m</td><td data-l="Posts per cell">121 × 121</td><td data-l="Horizontal objective">none of its own</td><td data-l="Vertical objective">none of its own</td></tr>
+    <tr><td>Level 1</td><td data-l="Post spacing">3 arc-seconds, about 90 m</td><td data-l="Posts per cell">1201 × 1201</td><td data-l="Horizontal objective">50 m, 90% circular error</td><td data-l="Vertical objective">30 m, 90% linear error</td></tr>
+    <tr><td>Level 2</td><td data-l="Post spacing">1 arc-second, about 30 m</td><td data-l="Posts per cell">3601 × 3601</td><td data-l="Horizontal objective">23 m, 90% circular error</td><td data-l="Vertical objective">18 m, 90% linear error</td></tr>
+   </table></div>
+   <p>Point-to-point (relative) vertical accuracy is 20 m for Level 1, and for Level 2 it is 12 m on slopes up to 20% and 15 m on steeper ground. Beyond 50° of latitude the posts are spaced wider in longitude. Levels 3, 4 and 5 (roughly 10 m, 3 m and 1 m) were proposed and never standardised; finer military data is issued in other formats.</p>
+   <p><strong>Where the heights come from.</strong> Public Level 1 and Level 2 files were built from the SRTM radar flight of February 2000, with water flattened and gaps edited, so they include trees and buildings. Other DTED was compiled from stereo imagery and maps and can represent the bare ground. The header does not always say which.</p>
+   <p><strong>To check a file here</strong></p>
+   <ol>
+    <li>Open Data, then “Your files”, and add the .dt1 or .dt2 file. HARD DECK reads the header (corner, post count, level, vertical reference code, stated accuracy, security marking) and lists it.</li>
+    <li>Go to Point. A “DTED cross-check” panel appears whenever the point lies inside the file. It gives the DTED height, the public models’ estimate, the difference, and whether that difference is inside the level’s vertical objective.</li>
+    <li>Switch on “SRTM 1 arc-second” under Sources. If your DTED was built from SRTM the two agree to within a metre or two.</li>
+    <li>Go to Area, study the cell or part of it, choose “Difference, A minus B” with DTED as A and Copernicus or SRTM as B. Read the mean offset, the spread and the “90% within” figure against the objective in the table above.</li>
+   </ol>
+   <div class="tablewrap"><table class="resp">
+    <thead><tr><th>What you see</th><th>What it usually means</th></tr></thead>
+    <tr><td>Within 1 to 2 m of SRTM everywhere</td><td data-l="Meaning">The file is SRTM-derived and is being read correctly.</td></tr>
+    <tr><td>A constant offset of 25 to 100 m</td><td data-l="Meaning">Vertical reference mix-up: one side is ellipsoid height. In India the offset equals N at that place.</td></tr>
+    <tr><td>A few metres below Copernicus over forest or towns, equal on open ground</td><td data-l="Meaning">Bare-earth compilation against a surface model, or tree growth and building since the data was collected.</td></tr>
+    <tr><td>Large, patchy differences on steep ground</td><td data-l="Meaning">A small horizontal shift acting on slope, or radar gaps filled from poorer data. Normal in mountains.</td></tr>
+    <tr><td>A step along a straight line</td><td data-l="Meaning">Two compilations joined at a sheet edge.</td></tr>
+   </table></div>
+   <p>Posts are stored as sign-and-magnitude numbers with −32767 marking a void. Some producers wrote negative heights in two’s complement instead; HARD DECK detects that and reads them correctly, and tells you it did.</p>
+   <p class="hint">A DTED file stays on this device. If its header carries a security code other than U, handle it under your own rules and consider EMCON on the Data page, which stops all lookups and map requests.</p>
+  </details>
+
+  <details>
+   <summary>Worked example: the elevation of a waypoint in the aircraft</summary>
+   <p>An inertial and GNSS unit of the TOTEM 3000 class computes position on the WGS84 ellipsoid, because that is what GNSS provides, and blends in barometric height to keep the vertical channel stable. Elevations on charts and in terrain files are sea-level heights. Somewhere a geoid correction bridges the two.</p>
+   <ul>
+    <li><strong>Cause.</strong> A waypoint elevation is taken from a source that quotes ellipsoid height, such as a raw GNSS survey or the ASF PALSAR DEM, and typed into a field that expects sea-level elevation.</li>
+    <li><strong>Effect on height.</strong> At Gwalior the waypoint ends up 58 m (190 ft) too low, at Thiruvananthapuram 97 m (318 ft), at Leh 24 m (79 ft).</li>
+    <li><strong>Effect on position.</strong> Whenever a line of sight is intersected with that elevation, the height error becomes a ground error of height error divided by the tangent of the look-down angle. A 58 m error is about 330 m on the ground at 10° and about 100 m at 30°. Steeper geometry forgives more.</li>
+    <li><strong>What to do.</strong> Read the point here, take the “MSL EGM96” value where a chart-style elevation is expected, and carry the ± figure as your uncertainty. Which reference a particular field in a particular aircraft expects is defined in that aircraft’s documentation, so confirm it there.</li>
+   </ul>
+   <p>Barometric altitude is a separate matter. An altimeter set to QNH shows true altitude only in a standard atmosphere. In air warmer than standard the aircraft is higher than indicated, and in colder air lower, by roughly 4% of the height above the station for every 10 °C. That is weather, and no terrain or geoid model corrects it.</p>
+  </details>
+
+  <details>
+   <summary>Desert, mountains, and making DTED from radar</summary>
+   <p><strong>Rajasthan desert.</strong> Open, dry, gently sloping ground with almost no vegetation is the easy case. Expect the 30 m models to agree within 1 to 3 m, with Copernicus the most reliable. The exception is active dunes, where the surface has moved since the data was collected: trust interdune flats, rock and built-up ground more than dune crests.</p>
+   <p><strong>Himalaya.</strong> Expect 5 to 15 m of disagreement on slopes and more on cliffs and ridgelines. Compare Copernicus with AW3D30, which do not share a sensor: where they agree the value is sound, and where they differ by more than about 15 m the point is on steep or shadowed ground and neither deserves more trust than that. Summits read low in every 30 m model. EGM96 and EGM2008 also differ most here.</p>
+   <p><strong>Building DTED from radar.</strong> Radar interferometry gives ellipsoid heights. DTED is sea-level height on EGM96. Subtract the EGM96 undulation from every cell before calling the product DTED, and when checking against Copernicus remember that it sits on EGM2008. An Area study shows how much N changes across your tile: if that range is larger than your accuracy target, a single correction for the whole tile is not good enough. Note also that the widely shared “ALOS PALSAR 12.5 m DEM” from ASF is SRTM resampled to a finer grid, with ellipsoid heights, and contains no PALSAR height measurement.</p>
+  </details>
+
+  <details>
+   <summary>Reading the Area statistics</summary>
+   <ul>
+    <li><strong>Mean offset</strong> is a constant shift between two models. Tens of metres means a reference mix-up. A few metres over forest means surface against bare earth.</li>
+    <li><strong>Spread (σ)</strong> is the random part left once the constant shift is removed. It grows with slope and roughness.</li>
+    <li><strong>RMSE</strong> combines both into one figure, the usual headline accuracy number.</li>
+    <li><strong>90% within</strong> is the limit that nine cells in ten stay inside. It is directly comparable with the 90% linear error in the DTED specification.</li>
+    <li><strong>Slope</strong> is worked out on the sampling grid, so on a coarse grid over a large area it reads gentler than the ground really is.</li>
+   </ul>
+  </details>
+
+  <details>
+   <summary>On a phone, offline, and under EMCON</summary>
+   <ul>
+    <li><strong>Install it.</strong> On an iPhone open the site in Safari, tap Share, then “Add to Home Screen”. On Android open it in Chrome and choose “Install app” or “Add to Home screen”. It then opens full screen like any other app.</li>
+    <li><strong>Offline.</strong> After one visit the app and the South Asia geoids are kept on the device. Without a connection it still converts between references and reads any DTED, GeoTIFF or .hgt files you load. Online sources and the satellite map need a connection.</li>
+    <li><strong>EMCON.</strong> The switch on the Data page, or a tap on the status light at the top, stops all elevation lookups, map pictures and location requests, and stops the app remembering the last point. Use it with your own tiles for coordinates that should not leave the device. The app’s own files may still be fetched from the address it is hosted at.</li>
+    <li><strong>Your location.</strong> The arrow button beside the coordinate box fills in where the device is. A phone’s own height is good to 10 to 20 m at best, which is why the terrain models, not the phone, supply the answer.</li>
+   </ul>
+  </details>
+
+  <details>
+   <summary>Limits and credits</summary>
+   <p>HARD DECK compares models with each other. It does not know the truth, and it is not a certified source of aeronautical data. For survey-grade heights use levelled benchmarks, or long-occupation GNSS with a national geoid model. Indian charts are tied to the national vertical datum, which can differ from EGM96 by a few decimetres; that is below the noise of any 30 m model.</p>
+   <p class="hint">Copernicus DEM © DLR e.V. 2010–2014 and © Airbus Defence and Space GmbH 2014–2018, provided under COPERNICUS by the European Union and ESA; all rights reserved. ALOS World 3D-30m © JAXA. NASADEM and SRTM courtesy of NASA JPL and USGS. Tiles are read from OpenTopography (a facility supported by the US National Science Foundation) and Microsoft Planetary Computer; point lookups at 90 m by Open-Meteo. EGM96 and EGM2008 by the US National Geospatial-Intelligence Agency, gridded by the PROJ project. Imagery © Esri, Maxar, Earthstar Geographics; street map © OpenStreetMap contributors; contours © OpenTopoMap (CC-BY-SA); Sentinel-2 cloudless by EOX. Built with Leaflet and geotiff.js.</p>
+   <p class="hint" id="verLine"></p>
+  </details>
+ </div>
+</section>
+</main>
+<div id="tip" role="tooltip"></div>
+<div id="toast" role="status"></div>
+<script>
+"use strict";
+/* =====================================================================
+   HARD DECK  -  terrain height, cross-checked
+   core: helpers, geoid models, map projection, coordinate parsing
+   ===================================================================== */
+const APP = { name: 'HARD DECK', ver: '3.0.0', build: '54f431b6' };
+const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const el = (t, a = {}, h = '') => { const e = document.createElement(t); for (const k in a) e.setAttribute(k, a[k]); if (h) e.innerHTML = h; return e; };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const num = (v, d) => { const r = +(+v).toFixed(d); return (r < 0 ? '−' : '') + Math.abs(r).toFixed(d); };
+const fmt = (v, d = 1) => (v == null || !isFinite(v)) ? '–' : num(v, d);
+const sgn = (v, d = 1) => { if (v == null || !isFinite(v)) return ''; const r = +(+v).toFixed(d); return (r > 0 ? '+' : r < 0 ? '−' : '') + Math.abs(r).toFixed(d); };
+const FT = v => isFinite(v) ? Math.round(v * 3.28084).toLocaleString('en-US') : '–';
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const TOUCH = matchMedia('(hover: none)').matches;
+const median = a => { const s = a.slice().sort((x, y) => x - y), n = s.length; return n ? (n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2) : NaN; };
+const store = { get(k, d) { try { const v = localStorage.getItem('hd.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem('hd.' + k, JSON.stringify(v)); } catch (e) { } } };
+
+/* ---------------- geoid models ----------------
+   Grids hold N (geoid height above the WGS84 ellipsoid) in centimetres.
+   e96r / e08r : South Asia, EGM96 at 15 arc-minutes and EGM2008 at 2.5 arc-minutes
+   e96g / e08g : whole world at 15 arc-minutes, loaded only when a point lies outside South Asia
+   Values between grid nodes use bicubic (Catmull-Rom) interpolation; against the EGM96
+   harmonic model this is good to about 1 cm RMS and 12 cm at worst in the Himalaya. */
+const GEOID = {};
+const REGION = { s: 4.5, n: 39.5, w: 58.5, e: 99.5 };
+const inRegion = (lat, lon) => lat >= REGION.s && lat <= REGION.n && lon >= REGION.w && lon <= REGION.e;
+async function gunzip(u8) { return new Uint8Array(await new Response(new Blob([u8]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer()); }
+async function loadPack(name) {
+  let buf;
+  if (window.PACKS && window.PACKS[name]) { const bin = atob(window.PACKS[name]); buf = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i); }
+  else { const r = await fetch(`geoid-${name}.bin?v=${APP.build}`); if (!r.ok) throw new Error('geoid data file missing'); buf = new Uint8Array(await r.arrayBuffer()); }
+  const n = new DataView(buf.buffer, buf.byteOffset, 4).getUint32(0, true), meta = JSON.parse(new TextDecoder().decode(buf.subarray(4, 4 + n)));
+  let off = 4 + n;
+  for (const g of meta) {
+    const raw = await gunzip(buf.subarray(off, off + g.len)); off += g.len;
+    const a = new Int16Array(raw.buffer, raw.byteOffset, raw.byteLength >> 1), R = g.rows, C = g.cols;
+    for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) { const k = r * C + c; a[k] += (c ? a[k - 1] : 0) + (r ? a[k - C] : 0) - (r && c ? a[k - C - 1] : 0); }
+    GEOID[g.key] = { ...g, a };
+  }
+}
+let worldP = null;
+const ensureWorld = () => worldP || (worldP = loadPack('world').catch(e => { worldP = null; throw new Error('The worldwide geoid data could not be loaded. Outside South Asia the app needs to be online once to fetch it.'); }));
+const ensureGeoid = (lat, lon) => inRegion(lat, lon) ? Promise.resolve() : ensureWorld();
+const ensureGeoidBox = bb => (inRegion(bb[1], bb[0]) && inRegion(bb[3], bb[2])) ? Promise.resolve() : ensureWorld();
+const cub = (p0, p1, p2, p3, t) => p1 + 0.5 * t * (p2 - p0 + t * (2 * p0 - 5 * p1 + 4 * p2 - p3 + t * (3 * (p1 - p2) + p3 - p0)));
+function gridCubic(g, lat, lon) {
+  if (!g) return NaN;
+  let y = (g.lat0 - lat) / g.d, x = (lon - g.lon0) / g.d; const C = g.cols, R = g.rows, a = g.a;
+  if (g.wrap) x = ((x % C) + C) % C; else x = Math.min(Math.max(x, 0), C - 1);
+  y = Math.min(Math.max(y, 0), R - 1);
+  const i = Math.min(Math.floor(y), R - 2), j = g.wrap ? Math.floor(x) : Math.min(Math.floor(x), C - 2), fy = y - i, fx = x - j;
+  const col = c => g.wrap ? ((c % C) + C) % C : Math.min(Math.max(c, 0), C - 1), row = r => Math.min(Math.max(r, 0), R - 1);
+  const c0 = col(j - 1), c1 = col(j), c2 = col(j + 1), c3 = col(j + 2), v = [0, 0, 0, 0];
+  for (let m = 0; m < 4; m++) { const o = row(i + m - 1) * C; v[m] = cub(a[o + c0], a[o + c1], a[o + c2], a[o + c3], fx); }
+  return cub(v[0], v[1], v[2], v[3], fy) / 100;
+}
+/* N = height of the geoid above the WGS84 ellipsoid, metres. 'hae' is the ellipsoid itself. */
+function geoidN(datum, lat, lon) {
+  if (datum === 'hae') return 0;
+  if (inRegion(lat, lon)) return gridCubic(datum === 'egm96' ? GEOID.e96r : GEOID.e08r, lat, lon);
+  return gridCubic(datum === 'egm96' ? GEOID.e96g : GEOID.e08g, lat, lon);
+}
+const DATUM = {
+  egm96: { short: 'MSL EGM96', seg: 'MSL EGM96', long: 'above mean sea level (EGM96)', row: 'Mean sea level, EGM96', use: 'charts, DTED, ICAO' },
+  egm2008: { short: 'MSL EGM2008', seg: 'MSL EGM2008', long: 'above mean sea level (EGM2008)', row: 'Mean sea level, EGM2008', use: 'Copernicus, newest geoid' },
+  hae: { short: 'Ellipsoid', seg: 'Ellipsoid', long: 'above the WGS84 ellipsoid', row: 'WGS84 ellipsoid', use: 'raw GNSS' }
+};
+
+/* ---------------- UTM (Krueger series, WGS84) ---------------- */
+const TM = (() => {
+  const a = 6378137, f = 1 / 298.257223563, n = f / (2 - f), k0 = 0.9996;
+  const A = a / (1 + n) * (1 + n * n / 4 + n ** 4 / 64);
+  const al = [n / 2 - 2 * n * n / 3 + 5 * n ** 3 / 16, 13 * n * n / 48 - 3 * n ** 3 / 5, 61 * n ** 3 / 240];
+  const be = [n / 2 - 2 * n * n / 3 + 37 * n ** 3 / 96, n * n / 48 + n ** 3 / 15, 17 * n ** 3 / 480];
+  const de = [2 * n - 2 * n * n / 3 - 2 * n ** 3, 7 * n * n / 3 - 8 * n ** 3 / 5, 56 * n ** 3 / 15];
+  const c = 2 * Math.sqrt(n) / (1 + n), R = Math.PI / 180;
+  return {
+    fwd(lat, lon, zone, south) {
+      const ph = lat * R, dl = (lon - (zone * 6 - 183)) * R, s = Math.sin(ph);
+      const t = Math.sinh(Math.atanh(s) - c * Math.atanh(c * s));
+      const xi = Math.atan2(t, Math.cos(dl)), eta = Math.atanh(Math.sin(dl) / Math.sqrt(1 + t * t));
+      let X = xi, Y = eta;
+      for (let j = 1; j <= 3; j++) { X += al[j - 1] * Math.sin(2 * j * xi) * Math.cosh(2 * j * eta); Y += al[j - 1] * Math.cos(2 * j * xi) * Math.sinh(2 * j * eta); }
+      return [500000 + k0 * A * Y, (south ? 1e7 : 0) + k0 * A * X];
+    },
+    inv(E, N, zone, south) {
+      const xi = (N - (south ? 1e7 : 0)) / (k0 * A), eta = (E - 500000) / (k0 * A);
+      let X = xi, Y = eta;
+      for (let j = 1; j <= 3; j++) { X -= be[j - 1] * Math.sin(2 * j * xi) * Math.cosh(2 * j * eta); Y -= be[j - 1] * Math.cos(2 * j * xi) * Math.sinh(2 * j * eta); }
+      const chi = Math.asin(Math.sin(X) / Math.cosh(Y));
+      let ph = chi; for (let j = 1; j <= 3; j++) ph += de[j - 1] * Math.sin(2 * j * chi);
+      return [ph / R, zone * 6 - 183 + Math.atan2(Math.sinh(Y), Math.cos(X)) / R];
+    }
+  };
+})();
+
+/* ---------------- coordinates ----------------
+   Accepts decimal degrees, degrees-minutes, degrees-minutes-seconds, with hemisphere
+   letters before or after, and the packed aviation forms DDMM.m / DDMMSS (261736N 0781340E). */
+function parseCoord(str) {
+  if (!str) return null;
+  const s = String(str).trim().toUpperCase().replace(/[°º˚'’′"”″]/g, ' ').replace(/[;,]/g, ' , ').replace(/\s+/g, ' ').trim();
+  if (!s || /[^NSEW\d\s.,+\-]/.test(s)) return null;
+  const toks = s.match(/[NSEW]|,|[-+]?\d+(?:\.\d+)?/g); if (!toks) return null;
+  const isL = t => /^[NSEW]$/.test(t), letters = toks.filter(isL);
+  let g1 = [], g2 = [], h1 = '', h2 = '';
+  if (letters.length === 2) {
+    const prefix = isL(toks[0]); let grp = prefix ? 0 : 1, n = 0;
+    for (const t of toks) {
+      if (t === ',') continue;
+      if (isL(t)) { n++; if (n === 1) h1 = t; else h2 = t; grp = prefix ? n : n + 1; continue; }
+      if (grp === 1) g1.push(t); else if (grp === 2) g2.push(t); else return null;
+    }
+  } else if (letters.length === 0) {
+    const ci = toks.indexOf(','), nums = toks.filter(t => t !== ',');
+    if (ci > 0) { g1 = toks.slice(0, ci); g2 = toks.slice(ci + 1).filter(t => t !== ','); }
+    else { if (nums.length % 2) return null; g1 = nums.slice(0, nums.length / 2); g2 = nums.slice(nums.length / 2); }
+  } else return null;
+  const val = (g, isLon) => {
+    if (!g.length || g.length > 3) return NaN;
+    const neg = g[0].startsWith('-'), body = g[0].replace(/^[-+]/, ''), a = g.map(t => Math.abs(parseFloat(t)));
+    if (g.length === 1) {
+      const L = body.split('.')[0].length;
+      if (L >= 4) {                                   // packed: degrees and minutes (and seconds) run together
+        if (L > 7 || (!isLon && (L === 5 || L === 7))) return NaN;
+        const dl = (L === 5 || L === 7) ? 3 : 2, d = +body.slice(0, dl), rest = body.slice(dl); let v;
+        if (L - dl === 2) { const m = parseFloat(rest); if (m >= 60) return NaN; v = d + m / 60; }
+        else { const m = +rest.slice(0, 2), sec = parseFloat(rest.slice(2)); if (m >= 60 || sec >= 60) return NaN; v = d + m / 60 + sec / 3600; }
+        return neg ? -v : v;
+      }
+      return neg ? -a[0] : a[0];
+    }
+    if (a[1] >= 60 || (a[2] || 0) >= 60) return NaN;
+    const v = a[0] + a[1] / 60 + (a[2] || 0) / 3600; return neg ? -v : v;
+  };
+  let latG = g1, lonG = g2, hLat = h1, hLon = h2;
+  if (h1) { if (/[EW]/.test(h1) && /[NS]/.test(h2)) { latG = g2; lonG = g1; hLat = h2; hLon = h1; } else if (!(/[NS]/.test(h1) && /[EW]/.test(h2))) return null; }
+  let lat = val(latG, false), lon = val(lonG, true);
+  if (hLat === 'S') lat = -Math.abs(lat); if (hLon === 'W') lon = -Math.abs(lon);
+  if (!isFinite(lat) || !isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  return { lat, lon };
+}
+const fmtLL = (lat, lon) => `${Math.abs(lat).toFixed(5)}°${lat >= 0 ? 'N' : 'S'} ${Math.abs(lon).toFixed(5)}°${lon >= 0 ? 'E' : 'W'}`;
+function fmtDMS(lat, lon) {
+  const f = (v, pos, neg, w) => { const a = Math.abs(v); let d = Math.floor(a), m = Math.floor((a - d) * 60), s = Math.round(((a - d) * 60 - m) * 60); if (s === 60) { s = 0; m++; } if (m === 60) { m = 0; d++; } return `${String(d).padStart(w, '0')}°${String(m).padStart(2, '0')}′${String(s).padStart(2, '0')}″${v >= 0 ? pos : neg}`; };
+  return f(lat, 'N', 'S', 2) + ' ' + f(lon, 'E', 'W', 3);
+}
+function fmtDM(lat, lon) {
+  const f = (v, pos, neg, w) => { const a = Math.abs(v); let d = Math.floor(a), m = +(((a - d) * 60).toFixed(3)); if (m >= 60) { m = 0; d++; } return `${v >= 0 ? pos : neg}${String(d).padStart(w, '0')} ${m.toFixed(3).padStart(6, '0')}`; };
+  return f(lat, 'N', 'S', 2) + ' ' + f(lon, 'E', 'W', 3);
+}
+
+/* ---------------- small numeric helpers ---------------- */
+function stats(a) {
+  let n = 0, s = 0, s2 = 0, mn = Infinity, mx = -Infinity; const abs = [];
+  for (const v of a) { if (isNaN(v)) continue; n++; s += v; s2 += v * v; if (v < mn) mn = v; if (v > mx) mx = v; abs.push(Math.abs(v)); }
+  if (!n) return null; abs.sort((x, y) => x - y); const mean = s / n;
+  return { n, mean, sd: Math.sqrt(Math.max(0, s2 / n - mean * mean)), rmse: Math.sqrt(s2 / n), min: mn, max: mx, le90: abs[Math.min(n - 1, Math.floor(n * 0.9))], cover: n / a.length };
+}
+function bilin(get, x, y) {
+  const i = Math.floor(x), j = Math.floor(y), fx = x - i, fy = y - j;
+  const a = get(i, j), b = get(i + 1, j), c = get(i, j + 1), d = get(i + 1, j + 1);
+  if (isNaN(a) || isNaN(b) || isNaN(c) || isNaN(d)) return get(Math.round(x), Math.round(y));
+  return a * (1 - fx) * (1 - fy) + b * fx * (1 - fy) + c * (1 - fx) * fy + d * fx * fy;
+}
+function niceTicks(lo, hi, n = 5) { if (hi - lo < 1e-9) { lo -= 1; hi += 1; } const raw = (hi - lo) / n, p = Math.pow(10, Math.floor(Math.log10(raw))), s = [1, 2, 5, 10].find(m => m * p >= raw) * p; const t = []; for (let v = Math.ceil(lo / s - 1e-9) * s; v <= hi + 1e-9; v += s) t.push(+v.toFixed(10)); return { t, s }; }
+const tickDec = s => s >= 1 ? 0 : Math.min(3, Math.ceil(-Math.log10(s) - 1e-9));
+/* push labels apart so they do not overlap; ys must be sorted ascending */
+function declutter(ys, gap, lo, hi) {
+  const o = ys.slice(), n = o.length; if (!n) return o;
+  for (let i = 1; i < n; i++) if (o[i] - o[i - 1] < gap) o[i] = o[i - 1] + gap;
+  if (o[n - 1] > hi) { o[n - 1] = hi; for (let i = n - 2; i >= 0; i--) if (o[i + 1] - o[i] < gap) o[i] = o[i + 1] - gap; }
+  if (o[0] < lo) { const d = lo - o[0]; for (let i = 0; i < n; i++) o[i] += d; }
+  return o;
+}
+
+/* TIFF LZW decoder. The reader library's own decoder fails on valid files whose code table fills
+   completely before it is cleared (some non-libtiff writers do that), so this one replaces it. */
+function lzwDecode(input) {
+  const src = new Uint8Array(input), n = src.length, prefix = new Uint16Array(4096), suffix = new Uint8Array(4096), length = new Uint16Array(4096);
+  for (let i = 0; i < 256; i++) { suffix[i] = i; length[i] = 1; }
+  let out = new Uint8Array(Math.max(4096, n * 4)), op = 0, bits = 9, next = 258, old = -1, buf = 0, cnt = 0, ip = 0;
+  const room = need => { if (op + need > out.length) { const o = new Uint8Array(Math.max(out.length * 2, op + need)); o.set(out.subarray(0, op)); out = o; } };
+  for (;;) {
+    while (cnt < bits && ip < n) { buf = ((buf << 8) | src[ip++]) >>> 0; cnt += 8; }
+    if (cnt < bits) break;                                   // ran out of data without an end code
+    const code = (buf >>> (cnt - bits)) & ((1 << bits) - 1); cnt -= bits; buf &= (1 << cnt) - 1;
+    if (code === 257) break;
+    if (code === 256) { bits = 9; next = 258; old = -1; continue; }
+    if (old === -1) { if (code > 255) throw new Error('corrupt LZW data'); room(1); out[op++] = code; old = code; continue; }
+    let len, first;
+    if (code < next) {
+      len = length[code]; room(len); let p = op + len - 1, c = code; while (c > 255) { out[p--] = suffix[c]; c = prefix[c]; } out[p] = c; first = c;
+    } else if (code === next && next < 4096) {
+      len = length[old] + 1; room(len); let p = op + len - 2, c = old; while (c > 255) { out[p--] = suffix[c]; c = prefix[c]; } out[p] = c; first = c; out[op + len - 1] = first;
+    } else throw new Error('corrupt LZW data');
+    if (next < 4096) { prefix[next] = old; suffix[next] = first; length[next] = length[old] + 1; next++; }
+    op += len; old = code;
+    if (next >= (1 << bits) - 1 && bits < 12) bits++;        // TIFF widens the code one entry early
+  }
+  return out.buffer.slice(0, op);
+}
+
+/* =====================================================================
+   sources: terrain models, file readers (GeoTIFF, SRTM .hgt, DTED), online lookups
+   ===================================================================== */
+const pad = (n, w) => String(Math.abs(n)).padStart(w, '0');
+const NS = a => (a >= 0 ? 'N' : 'S'), EW = o => (o >= 0 ? 'E' : 'W');
+const OT = 'https://opentopography.s3.sdsc.edu/raster/';
+/* family = which satellite data a model descends from. Models in one family are not independent of each other. */
+const FAMILY = { tdx: 'TanDEM-X radar', srtm: 'Shuttle radar (SRTM)', alos: 'ALOS optical stereo', dted: 'DTED file' };
+const MODELS = [
+  { id: 'cop30', name: 'Copernicus GLO-30', short: 'COP30', family: 'tdx', kind: 'Surface model from TanDEM-X radar, flown 2010 to 2015', res: '30 m', arc: 1, datum: 'egm2008', color: '#3BA7D6', size: '25–55 MB', online: true,
+    match: /Copernicus_DSM|COP.?30|GLO.?30/i, tile: (a, o) => `Copernicus_DSM_10_${NS(a)}${pad(a, 2)}_00_${EW(o)}${pad(o, 3)}_00_DEM.tif`, key: (a, o) => `COP30/COP30_hh/Copernicus_DSM_10_${NS(a)}${pad(a, 2)}_00_${EW(o)}${pad(o, 3)}_00_DEM.tif`,
+    pc: { acct: 'elevationeuwest', cont: 'copernicus-dem', path: (a, o) => `COP30_hh/Copernicus_DSM_COG_10_${NS(a)}${pad(a, 2)}_00_${EW(o)}${pad(o, 3)}_00_DEM.tif` },
+    portal: 'https://portal.opentopography.org/datasets', note: 'Usually the most accurate free model on open ground. Includes trees and buildings.' },
+  { id: 'aw3d30', name: 'ALOS AW3D30', short: 'AW3D30', family: 'alos', kind: 'Surface model from ALOS optical stereo images, 2006 to 2011', res: '30 m', arc: 1, datum: 'egm96', color: '#E0A030', size: '5–25 MB', online: true,
+    match: /ALPSMLC30|AW3D30/i, tile: (a, o) => `ALPSMLC30_${NS(a)}${pad(a, 3)}${EW(o)}${pad(o, 3)}_DSM.tif`, key: (a, o) => `AW3D30/AW3D30_global/ALPSMLC30_${NS(a)}${pad(a, 3)}${EW(o)}${pad(o, 3)}_DSM.tif`,
+    pc: { acct: 'ai4edataeuwest', cont: 'alos-dem', path: (a, o) => `AW3D30_global/ALPSMLC30_${NS(a)}${pad(a, 3)}${EW(o)}${pad(o, 3)}_DSM.tif` },
+    portal: 'https://www.eorc.jaxa.jp/ALOS/en/dataset/aw3d30/aw3d30_e.htm', note: 'Independent of the radar models, and often the better one on steep mountain slopes. Gaps under snow and cloud.' },
+  { id: 'nasadem', name: 'NASADEM', short: 'NASADEM', family: 'srtm', kind: 'Surface model from the Shuttle radar mission of February 2000, reprocessed in 2020', res: '30 m', arc: 1, datum: 'egm96', color: '#A68BEA', size: '5–20 MB', online: true,
+    match: /NASADEM/i, tile: (a, o) => `NASADEM_HGT_${NS(a).toLowerCase()}${pad(a, 2)}${EW(o).toLowerCase()}${pad(o, 3)}.tif`, key: (a, o) => `NASADEM/NASADEM_be/NASADEM_HGT_${NS(a).toLowerCase()}${pad(a, 2)}${EW(o).toLowerCase()}${pad(o, 3)}.tif`,
+    pc: { acct: 'nasademeuwest', cont: 'nasadem-cog', path: (a, o) => `v001/NASADEM_HGT_${NS(a).toLowerCase()}${pad(a, 2)}${EW(o).toLowerCase()}${pad(o, 3)}.tif` },
+    portal: 'https://portal.opentopography.org/datasets', note: 'The improved version of SRTM. Oldest of the three main models, so it shows the ground as it was in 2000.' },
+  { id: 'srtm', name: 'SRTM 1 arc-second', short: 'SRTM', family: 'srtm', kind: 'Original Shuttle radar surface model, February 2000', res: '30 m', arc: 1, datum: 'egm96', color: '#C98052', size: '2–25 MB', online: true,
+    match: /^[NS]\d{2}[EW]\d{3}\.(tif|tiff|hgt)$|SRTM/i, tile: (a, o) => `${NS(a)}${pad(a, 2)}${EW(o)}${pad(o, 3)}.tif`, key: (a, o) => `SRTM_GL1/SRTM_GL1_srtm/${NS(a)}${pad(a, 2)}${EW(o)}${pad(o, 3)}.tif`,
+    portal: 'https://portal.opentopography.org/datasets', note: 'The parent of public DTED Level 1 and 2. Switch it on when checking a DTED file.' },
+  { id: 'dted', name: 'DTED', short: 'DTED', family: 'dted', kind: 'Military elevation posts in the DTED format: Level 1 every 3 arc-seconds, Level 2 every 1 arc-second', res: '30–90 m', arc: 1, datum: 'egm96', color: '#C9D94A', size: '3–26 MB',
+    match: /\.dt\d$/i, tile: (a, o) => `${EW(o).toLowerCase()}${pad(o, 3)}/${NS(a).toLowerCase()}${pad(a, 2)}.dt2`, portal: 'https://earthexplorer.usgs.gov/', note: 'Load your own .dt0, .dt1 or .dt2 files. Public DTED built from SRTM is on USGS EarthExplorer.' },
+  { id: 'fabdem', name: 'FABDEM', short: 'FABDEM', family: 'tdx', kind: 'Bare-earth model: Copernicus with trees and buildings removed', res: '30 m', arc: 1, datum: 'egm2008', color: '#4CB878', size: '10–40 MB',
+    match: /FABDEM/i, tile: (a, o) => `${NS(a)}${pad(a, 2)}${EW(o)}${pad(o, 3)}_FABDEM_V1-2.tif`, portal: 'https://data.bris.ac.uk/data/dataset/s5hqmjcdj8yo2ibzi9b4ew3sn', note: 'Use it to see the ground under forest or a town. Non-commercial licence, download only.' },
+  { id: 'asfrtc', name: 'ASF PALSAR RTC DEM', short: 'ASF RTC', family: 'srtm', kind: 'SRTM resampled to a 12.5 m grid for PALSAR processing', res: '30 m real', arc: 1, datum: 'hae', color: '#E0605A', size: '50–150 MB',
+    match: /^AP_.*dem\.tif$|_RT[12]\.dem/i, tile: () => 'AP_…_RT1.dem.tif (by scene)', portal: 'https://search.asf.alaska.edu/', note: 'Heights are above the ellipsoid, not sea level, and the data is SRTM, not PALSAR.' },
+  { id: 'tdx90', name: 'TanDEM-X 90 m', short: 'TDX90', family: 'tdx', kind: 'Surface model from TanDEM-X radar at 90 m', res: '90 m', arc: 3, datum: 'hae', color: '#D66BA8', size: '2–8 MB',
+    match: /TDM1_DEM/i, tile: (a, o) => `TDM1_DEM__30_${NS(a)}${pad(a, 2)}${EW(o)}${pad(o, 3)}_DEM.tif`, portal: 'https://download.geoservice.dlr.de/TDM90/', note: 'Heights are above the ellipsoid.' },
+  { id: 'om90', name: 'Copernicus GLO-90', short: 'GLO-90', family: 'tdx', kind: 'Copernicus at 90 m, answered by the Open-Meteo elevation service', res: '90 m', arc: 3, datum: 'egm2008', color: '#7C93A6', size: 'online only', online: true, onlineOnly: true,
+    match: /$^/, tile: () => 'online only', portal: 'https://open-meteo.com/en/docs/elevation-api', note: 'A few bytes per lookup, so the lightest on mobile data. Smooths ridges and valleys.' },
+];
+const CUSTOM_COLORS = ['#9AA7B1', '#E08BC4', '#7FD1B9', '#F28E5C', '#B0A0FF'];
+const PRIO = ['cop30', 'fabdem', 'tdx90', 'om90', 'nasadem', 'srtm', 'asfrtc', 'aw3d30', 'dted'];
+const DTED_SPEC = { 1: { le: 30, ce: 50, rel: '20 m', post: '3 arc-seconds, about 90 m' }, 2: { le: 18, ce: 23, rel: '12 to 15 m', post: '1 arc-second, about 30 m' } };
+const customs = {};
+const modelById = id => MODELS.find(m => m.id === id) || customs[id];
+const prioOf = id => { const i = PRIO.indexOf(id); return i < 0 ? 99 : i; };
+const guessModel = name => { for (const id of ['fabdem', 'cop30', 'aw3d30', 'nasadem', 'asfrtc', 'tdx90', 'dted', 'srtm']) { const m = modelById(id); if (m.match.test(name)) return m; } return null; };
+const covers = (b, lat, lon) => lon >= b[0] - 1e-6 && lon <= b[2] + 1e-6 && lat >= b[1] - 1e-6 && lat <= b[3] + 1e-6;
+
+/* ---------------- SRTM .hgt ---------------- */
+class HgtSource {
+  constructor(name, buf) {
+    const m = /([NS])(\d{2})([EW])(\d{3})/i.exec(name);
+    if (!m) throw new Error('The file name must contain the tile position, for example N27E078.hgt');
+    this.n = Math.round(Math.sqrt(buf.byteLength / 2));
+    if (this.n * this.n * 2 !== buf.byteLength || this.n < 2) throw new Error('Not a square .hgt tile');
+    this.lat0 = (m[1].toUpperCase() === 'S' ? -1 : 1) * +m[2]; this.lon0 = (m[3].toUpperCase() === 'W' ? -1 : 1) * +m[4];
+    this.dv = new DataView(buf); this.arc = 3600 / (this.n - 1);
+    this.bbox = [this.lon0, this.lat0, this.lon0 + 1, this.lat0 + 1];
+    this.info = `${this.n} × ${this.n} posts, ${this.arc.toFixed(0)}″ spacing`;
+  }
+  get(i, j) { const n = this.n; if (i < 0 || j < 0 || i >= n || j >= n) return NaN; const v = this.dv.getInt16((j * n + i) * 2, false); return v <= -9000 ? NaN : v; }
+  val(lat, lon) {
+    const x = (lon - this.lon0) * (this.n - 1), y = (this.lat0 + 1 - lat) * (this.n - 1), n1 = this.n - 1;
+    if (x < -1e-6 || y < -1e-6 || x > n1 + 1e-6 || y > n1 + 1e-6) return NaN;
+    return bilin((i, j) => this.get(Math.min(i, n1), Math.min(j, n1)), Math.min(Math.max(x, 0), n1), Math.min(Math.max(y, 0), n1));
+  }
+  async sample(lat, lon) { return this.val(lat, lon); }
+  async readGrid(lats, lons, out) { let hit = false; const nx = lons.length; for (let r = 0; r < lats.length; r++) for (let c = 0; c < nx; c++) { const k = r * nx + c; if (!isNaN(out[k])) continue; const v = this.val(lats[r], lons[c]); if (!isNaN(v)) { out[k] = v; hit = true; } } return hit; }
+}
+
+/* ---------------- DTED (MIL-PRF-89020B) ----------------
+   UHL (80 bytes), DSI (648), ACC (2700), then one record per longitude line, west to east.
+   Each record: 0xAA, 3-byte block count, 2-byte longitude count, 2-byte latitude count,
+   then the posts south to north as 16-bit big-endian SIGNED MAGNITUDE, then a 4-byte checksum.
+   -32767 marks a void. Heights are metres above mean sea level (EGM96). */
+class DtedSource {
+  constructor(name, buf) {
+    const u8 = new Uint8Array(buf); let p = -1;
+    for (let i = 0; i < Math.min(u8.length - 4, 2000); i++) if (u8[i] === 85 && u8[i + 1] === 72 && u8[i + 2] === 76 && u8[i + 3] === 49) { p = i; break; }
+    if (p < 0) throw new Error('Not a DTED file: the UHL header was not found');
+    const txt = (o, n) => String.fromCharCode.apply(null, u8.subarray(p + o, p + o + n));
+    const ang = s => { const m = /^\s*(\d{3})(\d{2})(\d{2})([NSEW])/.exec(s); if (!m) throw new Error('The DTED header has an unreadable origin'); const v = +m[1] + m[2] / 60 + m[3] / 3600; return /[SW]/.test(m[4]) ? -v : v; };
+    this.lon0 = ang(txt(4, 8)); this.lat0 = ang(txt(12, 8));
+    const lonInt = +txt(20, 4) / 10, latInt = +txt(24, 4) / 10;
+    this.accText = txt(28, 4).trim(); this.security = txt(32, 3).trim();
+    this.nLon = +txt(47, 4); this.nLat = +txt(51, 4);
+    if (!(this.nLon > 1 && this.nLat > 1)) throw new Error('The DTED header does not give the grid size');
+    const dsi = (o, n) => txt(80 + o, n).trim();
+    this.series = dsi(59, 5); this.edition = dsi(87, 2); this.producer = dsi(102, 8); this.vcode = dsi(141, 3); this.hcode = dsi(144, 5); this.compiled = dsi(159, 4);
+    this.off = p + 3428; this.rec = 12 + 2 * this.nLat;
+    if (u8.length < this.off + this.nLon * this.rec) throw new Error('The DTED file is shorter than its header says');
+    if (u8[this.off] !== 0xAA) throw new Error('DTED data records were not found where the header says');
+    /* a standard cell is exactly 1 degree: trust the post count; fall back to the header interval for odd products */
+    const span = (n, int) => (int > 0 && Math.abs((n - 1) * int - 3600) > 540) ? int / 3600 : 1 / (n - 1);
+    this.dLon = span(this.nLon, lonInt); this.dLat = span(this.nLat, latInt); this.arc = this.dLat * 3600;
+    const lm = /DTED(\d)/.exec(this.series); this.level = lm ? +lm[1] : (this.arc > 20 ? 0 : this.arc > 2 ? 1 : this.arc > 0.6 ? 2 : 3);
+    this.vdatum = /E08/i.test(this.vcode) ? 'egm2008' : 'egm96';
+    this.acc = /^\d+$/.test(this.accText) ? +this.accText : null;
+    this.u8 = u8; this.bbox = [this.lon0, this.lat0, this.lon0 + (this.nLon - 1) * this.dLon, this.lat0 + (this.nLat - 1) * this.dLat];
+    /* one pass over the posts: detect two's-complement negatives (a common producer fault) and count voids */
+    let odd = 0, voids = 0, mn = Infinity, mx = -Infinity; const N = this.nLat;
+    for (let c = 0; c < this.nLon; c++) { let o = this.off + c * this.rec + 8; for (let r = 0; r < N; r++, o += 2) { const raw = (u8[o] << 8) | u8[o + 1], v = (raw & 0x7FFF) * (raw & 0x8000 ? -1 : 1); if (v === -32767) voids++; else if (v < -12000) odd++; else { if (v < mn) mn = v; if (v > mx) mx = v; } } }
+    this.twos = odd > 0; this.voidPct = voids / (this.nLon * N) * 100; this.min = mn; this.max = mx;
+    this.info = `DTED Level ${this.level}, ${this.nLon} × ${this.nLat} posts, ${this.arc >= 1 ? this.arc.toFixed(0) : this.arc.toFixed(2)}″ spacing`;
+  }
+  get(c, r) {
+    if (c < 0 || r < 0 || c >= this.nLon || r >= this.nLat) return NaN;
+    const o = this.off + c * this.rec + 8 + 2 * r, raw = (this.u8[o] << 8) | this.u8[o + 1];
+    const v = this.twos ? (raw > 32767 ? raw - 65536 : raw) : (raw & 0x7FFF) * (raw & 0x8000 ? -1 : 1);
+    return (v <= -32767 || v > 9000) ? NaN : v;
+  }
+  val(lat, lon) {
+    const x = (lon - this.lon0) / this.dLon, y = (lat - this.lat0) / this.dLat, nx = this.nLon - 1, ny = this.nLat - 1;
+    if (x < -1e-6 || y < -1e-6 || x > nx + 1e-6 || y > ny + 1e-6) return NaN;
+    return bilin((i, j) => this.get(Math.min(i, nx), Math.min(j, ny)), Math.min(Math.max(x, 0), nx), Math.min(Math.max(y, 0), ny));
+  }
+  async sample(lat, lon) { return this.val(lat, lon); }
+  async readGrid(lats, lons, out) { let hit = false; const nx = lons.length; for (let r = 0; r < lats.length; r++) for (let c = 0; c < nx; c++) { const k = r * nx + c; if (!isNaN(out[k])) continue; const v = this.val(lats[r], lons[c]); if (!isNaN(v)) { out[k] = v; hit = true; } } return hit; }
+  facts() {
+    const f = [['Level', `${this.level}${DTED_SPEC[this.level] ? ` (posts every ${DTED_SPEC[this.level].post})` : ''}`], ['Posts', `${this.nLon} × ${this.nLat}`],
+      ['Vertical reference in header', this.vcode ? `${this.vcode} (${this.vdatum === 'egm2008' ? 'EGM2008' : 'mean sea level, EGM96'})` : 'not stated, taken as mean sea level (EGM96)'],
+      ['Horizontal reference', this.hcode || 'not stated'], ['Stated vertical accuracy', this.acc != null ? `${this.acc} m (90% linear error)` : 'not stated'],
+      ['Height range', `${this.min} to ${this.max} m`], ['Voids', this.voidPct ? `${this.voidPct.toFixed(2)}%` : 'none']];
+    if (this.producer) f.push(['Producer code', this.producer]); if (this.edition) f.push(['Edition', this.edition]);
+    if (this.security) f.push(['Security code in header', this.security]);
+    if (this.twos) f.push(['Note', 'Negative heights were written in two’s complement instead of the standard signed magnitude. They have been read correctly.']);
+    return f;
+  }
+}
+
+/* ---------------- GeoTIFF: local file or remote cloud-optimised file ---------------- */
+let gtP = null;
+function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('could not load ' + src)); document.head.appendChild(s); }); }
+let lzwIn = false;
+function installLzw() { if (lzwIn || !window.GeoTIFF || !GeoTIFF.addDecoder || !GeoTIFF.BaseDecoder) return; lzwIn = true; class Lzw extends GeoTIFF.BaseDecoder { decodeBlock(buffer) { return lzwDecode(buffer); } } GeoTIFF.addDecoder(5, () => Promise.resolve(Lzw), undefined, false); }
+function needGeoTIFF() { if (window.GeoTIFF) { installLzw(); return Promise.resolve(); } return gtP || (gtP = loadScript('geotiff.js?v=' + APP.build).then(installLzw).catch(e => { gtP = null; throw new Error('the GeoTIFF reader could not be loaded'); })); }
+class TiffSource {
+  static async open(file) { await needGeoTIFF(); return TiffSource.from(await GeoTIFF.fromBlob(file)); }
+  static async openUrl(url) { await needGeoTIFF(); return TiffSource.from(await GeoTIFF.fromUrl(url)); }
+  static async from(tiff) {
+    const s = new TiffSource(); s.tiff = tiff; s.img = await tiff.getImage(0);
+    const im = s.img; s.w = im.getWidth(); s.h = im.getHeight();
+    let o, r; try { o = im.getOrigin(); r = im.getResolution(); } catch (e) { throw new Error('This GeoTIFF has no simple georeferencing (origin and pixel size)'); }
+    s.ox = o[0]; s.oy = o[1]; s.rx = r[0]; s.ry = r[1];
+    const gk = im.getGeoKeys() || {}; s.off = gk.GTRasterTypeGeoKey === 2 ? 0 : 0.5;      // 2 = a value belongs to a point, otherwise to a cell
+    const nd = im.getGDALNoData(); s.nodata = nd == null ? null : +nd;
+    const pcs = gk.ProjectedCSTypeGeoKey;
+    if (gk.GTModelTypeGeoKey === 1 || pcs) {
+      if (pcs >= 32601 && pcs <= 32660) { s.zone = pcs - 32600; s.south = false; }
+      else if (pcs >= 32701 && pcs <= 32760) { s.zone = pcs - 32700; s.south = true; }
+      else throw new Error('Only WGS84 latitude/longitude and WGS84 UTM rasters can be read (this one uses projection code ' + (pcs || 'unknown') + ')');
+    }
+    const cs = [[0, 0], [s.w, 0], [0, s.h], [s.w, s.h], [s.w / 2, 0], [s.w / 2, s.h], [0, s.h / 2], [s.w, s.h / 2]].map(([i, j]) => s.toLL(s.ox + i * s.rx, s.oy + j * s.ry));
+    s.bbox = [Math.min(...cs.map(c => c[1])), Math.min(...cs.map(c => c[0])), Math.max(...cs.map(c => c[1])), Math.max(...cs.map(c => c[0]))];
+    s.arc = s.zone ? Math.abs(s.ry) / 30.87 : Math.abs(s.ry) * 3600;
+    s.info = `${s.w} × ${s.h} cells, ${s.zone ? Math.abs(s.rx).toFixed(1) + ' m, UTM zone ' + s.zone + (s.south ? 'S' : 'N') : s.arc.toFixed(s.arc < 10 ? 1 : 0) + '″ spacing'}`;
+    return s;
+  }
+  toLL(X, Y) { return this.zone ? TM.inv(X, Y, this.zone, this.south) : [Y, X]; }
+  toPix(lat, lon) { let X = lon, Y = lat; if (this.zone) [X, Y] = TM.fwd(lat, lon, this.zone, this.south); return [(X - this.ox) / this.rx - this.off, (Y - this.oy) / this.ry - this.off]; }
+  clean(v) { return (v === this.nodata || !isFinite(v) || v <= -9000 || v > 9000) ? NaN : v; }
+  inside(px, py) { return px >= -0.5 && py >= -0.5 && px <= this.w - 0.5 && py <= this.h - 0.5; }
+  /* reduced-resolution copies stored in the file, so a large area needs only a small download */
+  async level(dec) {
+    if (!this.levels) {
+      this.levels = [{ img: this.img, fx: 1, fy: 1 }];
+      try { const n = await this.tiff.getImageCount(); for (let i = 1; i < n; i++) { const im = await this.tiff.getImage(i), fd = im.fileDirectory; let sub = 1; try { if (fd && fd.hasTag && fd.hasTag('NewSubfileType')) sub = fd.getValue('NewSubfileType'); } catch (e) { } if (sub & 4) continue; const fx = this.w / im.getWidth(); if (fx > 1.5) this.levels.push({ img: im, fx, fy: this.h / im.getHeight() }); } } catch (e) { }
+    }
+    let best = this.levels[0]; for (const l of this.levels) if (l.fx <= dec && l.fx > best.fx) best = l; return best;
+  }
+  async sample(lat, lon) {
+    const [px, py] = this.toPix(lat, lon); if (!this.inside(px, py)) return NaN;
+    const x0 = Math.max(0, Math.min(this.w - 2, Math.floor(px))), y0 = Math.max(0, Math.min(this.h - 2, Math.floor(py)));
+    const x1 = Math.min(this.w, x0 + 2), y1 = Math.min(this.h, y0 + 2), ww = x1 - x0, wh = y1 - y0;
+    const d = (await this.img.readRasters({ window: [x0, y0, x1, y1], samples: [0] }))[0];
+    return bilin((i, j) => this.clean(d[Math.min(wh - 1, Math.max(0, j - y0)) * ww + Math.min(ww - 1, Math.max(0, i - x0))]), Math.min(Math.max(px, x0), x1 - 1), Math.min(Math.max(py, y0), y1 - 1));
+  }
+  async readGrid(lats, lons, out) {
+    const nx = lons.length, ny = lats.length, PX = new Float32Array(nx * ny), PY = new Float32Array(nx * ny);
+    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9, any = false;
+    for (let r = 0; r < ny; r++) for (let c = 0; c < nx; c++) {
+      const [px, py] = this.toPix(lats[r], lons[c]), k = r * nx + c; PX[k] = px; PY[k] = py;
+      if (isNaN(out[k]) && this.inside(px, py)) { any = true; if (px < x0) x0 = px; if (px > x1) x1 = px; if (py < y0) y0 = py; if (py > y1) y1 = py; }
+    }
+    if (!any) return false;
+    const step = Math.abs(this.toPix(lats[0], lons[Math.min(1, nx - 1)])[0] - this.toPix(lats[0], lons[0])[0]) || 1;
+    const L = await this.level(step), lw = L.img.getWidth(), lh = L.img.getHeight();
+    const a0 = Math.max(0, Math.floor((x0 + 0.5) / L.fx - 0.5) - 1), b0 = Math.max(0, Math.floor((y0 + 0.5) / L.fy - 0.5) - 1), a1 = Math.min(lw, Math.ceil((x1 + 0.5) / L.fx - 0.5) + 2), b1 = Math.min(lh, Math.ceil((y1 + 0.5) / L.fy - 0.5) + 2);
+    const ww = a1 - a0, wh = b1 - b0; if (ww < 1 || wh < 1) return false;
+    const bw = Math.min(ww, Math.max(2, nx * 2)), bh = Math.min(wh, Math.max(2, ny * 2));
+    const d = (await L.img.readRasters({ window: [a0, b0, a1, b1], width: bw, height: bh, samples: [0] }))[0];
+    const get = (i, j) => (i < 0 || j < 0 || i >= bw || j >= bh) ? NaN : this.clean(d[j * bw + i]);
+    let hit = false;
+    for (let k = 0; k < nx * ny; k++) {
+      if (!isNaN(out[k]) || !this.inside(PX[k], PY[k])) continue;
+      const lx = (PX[k] + 0.5) / L.fx - 0.5, ly = (PY[k] + 0.5) / L.fy - 0.5;
+      const bx = (lx - a0 + 0.5) * bw / ww - 0.5, by = (ly - b0 + 0.5) * bh / wh - 0.5;
+      const v = bilin(get, Math.min(Math.max(bx, 0), bw - 1), Math.min(Math.max(by, 0), bh - 1));
+      if (!isNaN(v)) { out[k] = v; hit = true; }
+    }
+    return hit;
+  }
+}
+
+/* ---------------- online lookups ----------------
+   Primary: OpenTopography's public bucket (no key, readable from a web page, cloud-optimised files).
+   Fallback: Microsoft Planetary Computer (short-lived access token, also keyless).
+   Only the small part of a tile around the point or area is downloaded. */
+const pcTok = new Map();
+async function pcUrl(pc, a, o) {
+  const k = pc.acct + '/' + pc.cont; let t = pcTok.get(k);
+  if (!t || t.exp - Date.now() < 120000) { const r = await fetch('https://planetarycomputer.microsoft.com/api/sas/v1/token/' + k); if (!r.ok) throw new Error('token refused'); const j = await r.json(); t = { token: j.token, exp: Date.parse(j['msft:expiry']) || Date.now() + 1800000 }; pcTok.set(k, t); }
+  return { url: `https://${pc.acct}.blob.core.windows.net/${pc.cont}/${pc.path(a, o)}?${t.token}`, exp: t.exp };
+}
+const tileCache = new Map();
+function openTile(id, a, o) {
+  const key = `${id}/${a}/${o}`, hit = tileCache.get(key);
+  if (hit && !(hit.exp && hit.exp < Date.now() + 60000)) return hit.p;
+  const m = modelById(id), rec = { exp: 0 };
+  rec.p = (async () => {
+    await needGeoTIFF();
+    try { const s = await TiffSource.openUrl(OT + m.key(a, o)); s.provider = 'OpenTopography'; return s; }
+    catch (e1) {
+      let exists = null;
+      try { const x = await (await fetch(`${OT.slice(0, -1)}?list-type=2&max-keys=1&prefix=${encodeURIComponent(m.key(a, o))}`)).text(); exists = /<Key>/.test(x); } catch (e) { }
+      if (exists === false) return null;                                    // no such tile: open sea, or outside the model's coverage
+      if (m.pc) { try { const u = await pcUrl(m.pc, a, o), s = await TiffSource.openUrl(u.url); s.provider = 'Planetary Computer'; rec.exp = u.exp; return s; } catch (e2) { } }
+      throw new Error('could not reach the elevation servers');
+    }
+  })();
+  rec.p.catch(() => tileCache.delete(key));
+  tileCache.set(key, rec); return rec.p;
+}
+async function omFetch(lats, lons) {
+  const out = [];
+  for (let i = 0; i < lats.length; i += 100) {
+    const r = await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lats.slice(i, i + 100).map(v => v.toFixed(5)).join(',')}&longitude=${lons.slice(i, i + 100).map(v => v.toFixed(5)).join(',')}`);
+    if (!r.ok) throw new Error('Open-Meteo answered ' + r.status);
+    out.push(...(await r.json()).elevation);
+  }
+  return out.map(v => (v == null || !isFinite(v)) ? NaN : v);
+}
+/* ground slope in degrees from four neighbours one post away */
+async function slopeAt(sampler, lat, lon, arc) {
+  const d = Math.max(1, arc || 1) / 3600, dm = d * 111320, cl = Math.max(Math.cos(lat * Math.PI / 180), 1e-6);
+  const [n, s, e, w] = await sampler([lat + d, lat - d, lat, lat], [lon, lon, lon + d / cl, lon - d / cl]);
+  if (![n, s, e, w].every(isFinite)) return null;
+  return Math.atan(Math.hypot((e - w) / (2 * dm), (n - s) / (2 * dm))) * 180 / Math.PI;
+}
+
+/* =====================================================================
+   ui (1): state, explanations, the Point page
+   ===================================================================== */
+const TIPS = {
+  n96: 'Geoid undulation N from the EGM96 model: how far mean sea level sits above (+) or below (−) the WGS84 ellipsoid here. EGM96 is the model aviation data, DTED, SRTM and AW3D30 are tied to.',
+  n08: 'The same quantity from EGM2008, a newer model built with far more gravity data. Copernicus heights use it.',
+  dn: 'How much the two geoid models disagree at this spot. A height quoted on EGM96 differs from the same point on EGM2008 by this amount.',
+  native: 'The number exactly as stored in the file or returned by the server, before any conversion.',
+  fileref: 'The surface this source measures its heights from. If it is set wrongly for a file, every converted height from that file is shifted by the geoid offset.',
+  base: 'Difference from the baseline chosen in step 3. By default the baseline is the best estimate: the median of the independent sources.',
+  c_egm96: 'Height above mean sea level using the EGM96 geoid: the chart, DTED and ICAO convention.',
+  c_egm2008: 'Height above mean sea level using the EGM2008 geoid, the newest public model.',
+  c_hae: 'Height above the WGS84 ellipsoid: what raw GNSS measures before any geoid correction.',
+  pm: 'The larger of two things: half the gap between the independent sources, and a rule of thumb for 30 m models on the slope measured here (about 2 m on flat ground, 4 m on gentle slopes, 8 m in hills, 15 m on steep and 25 m on very steep ground). An honest indication, not a guarantee.',
+  indep: 'Models made from the same satellite data share the same errors, so they count as one. The estimate is the median of one model from each family: TanDEM-X radar, Shuttle radar, ALOS optical, and any DTED or other file you load.',
+  slope: 'Steepness of the ground at the point, measured from the neighbouring posts of the best source. Steep ground turns small position errors into height errors, so the ± figure widens with it.',
+  lowest: 'Lowest sampled height in the area.', highest: 'Highest sampled height in the area.',
+  relief: 'Highest minus lowest height in the area. The more relief, the more the models will disagree.',
+  mslope: 'Average steepness across the area, worked out on the sampling grid. On a coarse grid it reads gentler than the ground really is.',
+  covered: 'Share of the area for which this model has data. Less than 100% means a tile is missing or the model has gaps.',
+  meanoff: 'Average of (this model minus the reference model). A constant shift: tens of metres point to a vertical-reference mix-up, a few metres to trees and buildings.',
+  sigma: 'Standard deviation of the differences: the random disagreement left once the constant shift is removed. Grows with slope and roughness.',
+  rmse: 'Root-mean-square difference: one figure combining the constant shift and the random part.',
+  le90: 'Nine sample points in ten differ from the reference by less than this. Directly comparable with the 90% linear error in the DTED specification.',
+  largest: 'The single biggest difference anywhere in the area, with its sign. Usually on a cliff, a ridge or a data gap.',
+  gslope: 'How fast the geoid tilts across the area. It tells you how far you can move before one fixed N stops being good enough.',
+  oneN: 'If you corrected the whole area with a single N taken at its centre, this is the largest height error that shortcut would cause.',
+  nrange: 'Lowest and highest geoid undulation inside the area.'
+};
+const T = (k, label) => `<span class="term" tabindex="0" data-tip="${esc(TIPS[k])}">${label}</span>`;
+const modelTip = m => esc(`${m.kind}. ${m.note || ''} Heights in this source are ${DATUM[m.datum].long}.`);
+
+/* ---------------- state ---------------- */
+const S = { lat: 26.2933, lon: 78.2278, gpsH: null, gpsRef: 'hae', ref: 'egm96', off: new Set(), on: new Set(['cop30', 'aw3d30', 'nasadem']), emcon: false, files: [], base: 'best', point: null, area: null, profDir: 'we', box: null, online: navigator.onLine, blocked: false, drawing: false };
+(() => { const p = store.get('state', null); if (!p) return; if (isFinite(p.lat) && isFinite(p.lon)) { S.lat = p.lat; S.lon = p.lon; } if (DATUM[p.ref]) S.ref = p.ref; if (Array.isArray(p.on)) S.on = new Set(p.on); S.emcon = !!p.emcon; })();
+const saveState = () => store.set('state', { ...(S.emcon ? {} : { lat: S.lat, lon: S.lon }), ref: S.ref, on: [...S.on], emcon: S.emcon });   // under EMCON the point is not remembered
+const netOK = () => S.online && !S.emcon && !S.blocked;
+const filesOf = id => S.files.filter(f => f.model === id).sort((a, b) => a.src.arc - b.src.arc);
+const hasFile = id => S.files.some(f => f.model === id);
+const listModels = () => [...MODELS.filter(m => m.online || hasFile(m.id)).map(m => m.id), ...Object.keys(customs).filter(hasFile)];
+function modelState(id) { const m = modelById(id); if (hasFile(id)) return { avail: true, active: !S.off.has(id), via: 'file' }; return { avail: !!m.online && netOK(), active: !!m.online && netOK() && S.on.has(id), via: 'online' }; }
+const activeModels = () => listModels().filter(id => modelState(id).active);
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove('show'), 2600); }
+const friendly = e => S.blocked ? 'blocked in this window' : /fetch|network|load/i.test(e.message || '') ? 'could not reach the server' : (e.message || 'failed');
+
+/* ---------------- sampling one model at one point ---------------- */
+async function sampleModel(id, lat, lon) {
+  const m = modelById(id);
+  for (const f of filesOf(id)) {
+    if (!covers(f.src.bbox, lat, lon)) continue;
+    const v = await f.src.sample(lat, lon);
+    if (isFinite(v)) return { v, via: 'file', datum: f.datum, src: f.src, arc: f.src.arc, sampler: (la, lo) => Promise.all(la.map((x, i) => f.src.sample(x, lo[i]))) };
+  }
+  if (!m.online || !S.on.has(id) || !netOK()) return { v: NaN, via: 'file', datum: m.datum, why: 'the point is outside the loaded file' };
+  if (id === 'om90') return { v: (await omFetch([lat], [lon]))[0], via: 'online', datum: m.datum, provider: 'Open-Meteo', arc: 3, sampler: omFetch };
+  const s = await openTile(id, Math.floor(lat), Math.floor(lon));
+  if (!s) return { v: NaN, via: 'online', datum: m.datum, sea: true, why: 'no tile here: open water or outside coverage' };
+  const v = await s.sample(lat, lon);
+  return { v, via: 'online', datum: m.datum, src: s, provider: s.provider, arc: s.arc, why: isFinite(v) ? '' : 'no data at this point', sampler: (la, lo) => Promise.all(la.map((x, i) => s.sample(x, lo[i]))) };
+}
+const slopeClass = s => s == null ? null : s < 3 ? { pm: 2, name: 'flat' } : s < 10 ? { pm: 4, name: 'gently sloping' } : s < 20 ? { pm: 8, name: 'hilly' } : s < 35 ? { pm: 15, name: 'steep' } : { pm: 25, name: 'very steep' };
+/* best estimate: median of one representative per independent family.
+   - your own rasters are compared against the estimate and never feed it, unless nothing else is available
+   - a DTED file that matches the Shuttle radar data is that data, so it does not get a separate vote */
+function estimate(P) {
+  const ok = P.rows.filter(r => isFinite(r.hae)), byP = (a, b) => prioOf(a.id) - prioOf(b.id), own = r => !!(modelById(r.id) || {}).custom;
+  const trusted = ok.filter(r => !own(r)), pool = trusted.length ? trusted : ok;
+  const sr = pool.filter(r => r.family === 'srtm').sort(byP)[0], dt = pool.find(r => r.id === 'dted');
+  const dtedIsSrtm = !!(sr && dt && Math.abs(dt.hae - sr.hae) <= (sr.id === 'srtm' ? 2.5 : 3.5)), famOf = r => (r.id === 'dted' && dtedIsSrtm) ? 'srtm' : r.family, fam = {};
+  for (const r of pool) { const f = famOf(r); if (!fam[f] || prioOf(r.id) < prioOf(fam[f].id)) fam[f] = r; }
+  const reps = Object.values(fam).sort(byP), hs = reps.map(r => r.hae);
+  const spread = hs.length > 1 ? Math.max(...hs) - Math.min(...hs) : NaN, sc = slopeClass(P.slope);
+  return { ok, reps, med: median(hs), spread, n: reps.length, sc, dtedIsSrtm, sr, ownLeft: ok.filter(r => own(r) && trusted.length), pm: Math.max(1, Math.round(Math.max(isFinite(spread) ? spread / 2 : 0, sc ? sc.pm : 3))) };
+}
+let ptSeq = 0, ptTimer = 0;
+const schedulePoint = () => { if (!ptTimer) ptTimer = requestAnimationFrame(() => { ptTimer = 0; renderPoint(); }); };
+async function computePoint() {
+  const seq = ++ptSeq, { lat, lon } = S; let geoErr = null;
+  try { await ensureGeoid(lat, lon); } catch (e) { geoErr = e.message; }
+  if (seq !== ptSeq) return;
+  const ids = activeModels();
+  const P = S.point = { lat, lon, n96: geoidN('egm96', lat, lon), n08: geoidN('egm2008', lat, lon), fine: inRegion(lat, lon), geoErr, slope: null, pending: ids.length,
+    rows: ids.map(id => { const m = modelById(id); return { id, name: m.name, short: m.short, color: m.color, family: m.family, datum: m.datum, native: NaN, hae: NaN, pending: true, via: modelState(id).via }; }) };
+  renderPoint();
+  await Promise.all(P.rows.map(async row => {
+    try { const r = await sampleModel(row.id, lat, lon); Object.assign(row, { native: r.v, via: r.via, datum: r.datum, src: r.src, provider: r.provider, why: r.why, sea: r.sea, sampler: r.sampler, arc: r.arc }); row.hae = isFinite(r.v) ? r.v + geoidN(r.datum, lat, lon) : NaN; }
+    catch (e) { row.err = friendly(e); }
+    row.pending = false; P.pending--; if (seq === ptSeq) schedulePoint();
+  }));
+  if (seq !== ptSeq) return;
+  const rep = estimate(P).reps.find(r => r.sampler);
+  if (rep) { try { P.slope = await slopeAt(rep.sampler, lat, lon, rep.arc); } catch (e) { P.slope = null; } }
+  if (seq === ptSeq) renderPoint();
+}
+
+/* ---------------- drawing helpers ---------------- */
+const NSV = 'http://www.w3.org/2000/svg';
+function svgEl(t, a, txt) { const e = document.createElementNS(NSV, t); for (const k in a) e.setAttribute(k, a[k]); if (txt != null) e.textContent = txt; return e; }
+function tween(ms, fn) { if (REDUCED || document.hidden) { fn(1); return; } const t0 = performance.now(); const step = t => { const u = Math.max(0, Math.min(1, (t - t0) / ms)); fn(1 - Math.pow(1 - u, 3)); if (u < 1) requestAnimationFrame(step); }; requestAnimationFrame(step); }
+const baseHae = () => { const P = S.point, E = P.est; if (S.base === 'gps' && P.gps) return P.gps.hae; const r = P.rows.find(x => x.id === S.base && isFinite(x.hae)); return r ? r.hae : E.med; };
+const baseName = () => { const P = S.point; if (S.base === 'gps' && P.gps) return 'your GPS height'; const r = P.rows.find(x => x.id === S.base && isFinite(x.hae)); return r ? r.name : 'the best estimate'; };
+const viaLabel = r => r.via === 'file' ? 'your file' : 'online';
+
+/* ---------------- result card ---------------- */
+function renderReadout() {
+  const P = S.point, E = P.est, ref = S.ref, N = geoidN(ref, P.lat, P.lon), box = $('#readout');
+  $$('#refSeg button').forEach(b => b.setAttribute('aria-pressed', b.dataset.ref === ref));
+  if (P.geoErr) { box.innerHTML = `<div class="ro-msg">${esc(P.geoErr)}</div>`; $('#refTable').innerHTML = ''; return; }
+  if (E.n) {
+    const h = E.med - N, fams = E.reps.map(r => r.name).join(', ');
+    box.innerHTML = `<div class="ro"><div class="ro-box" data-tip="Best estimate of the ground height here, ${DATUM[ref].long}: the median of the independent sources.">${fmt(h, 0)}<small>m</small></div><div class="ro-ft">${FT(h)} ft</div></div>
+      <div class="ro-ref">${DATUM[ref].long}${P.pending ? `, still checking ${P.pending} source${P.pending > 1 ? 's' : ''}` : ''}</div>
+      <div class="ro-chips"><span class="badge ok" data-tip="${esc(TIPS.pm)}">likely within ±${E.pm} m</span><span class="badge" data-tip="${esc(TIPS.indep + ' Used here: ' + fams + '.')}">${E.n} independent source${E.n > 1 ? 's' : ''}</span>${E.sc ? `<span class="badge${E.sc.pm >= 15 ? ' warn' : ''}" data-tip="${esc(TIPS.slope)}">${E.sc.name}, slope ${fmt(P.slope, 0)}°</span>` : ''}</div>`;
+    $('#refTable').innerHTML = ['egm96', 'egm2008', 'hae'].map(k => { const v = E.med - geoidN(k, P.lat, P.lon); return `<tr class="${k === ref ? 'sel' : ''}"><td>${DATUM[k].row}<small>${DATUM[k].use}</small></td><td>${fmt(v, 1)} m</td><td>${FT(v)} ft</td></tr>`; }).join('');
+  } else {
+    const sea = P.rows.length && !P.pending && P.rows.every(r => r.sea);
+    box.innerHTML = P.pending ? `<div class="ro-msg">Checking ${P.pending} source${P.pending > 1 ? 's' : ''}…</div>`
+      : sea ? `<div class="ro-msg">No land here in any model</div><div class="ro-ref">The point looks to be over open water, where the surface is sea level itself: 0 m above mean sea level, which is ${fmt(P.n96, 1)} m on the ellipsoid.</div>`
+      : `<div class="ro-msg">No terrain height yet</div><div class="ro-ref">${!S.online ? 'This device is offline.' : S.emcon ? 'EMCON is on, so nothing is being looked up.' : P.rows.length ? 'The sources did not return a height for this point.' : 'No sources are switched on.'} Sea level here is ${fmt(Math.abs(P.n96), 1)} m ${P.n96 < 0 ? 'below' : 'above'} the ellipsoid. Load tiles on the Data page${S.online && !S.emcon ? ' or switch sources on' : ''}.</div>`;
+    $('#refTable').innerHTML = '';
+  }
+}
+
+/* ---------------- step 1 figure: the three levels ---------------- */
+function renderLevels() {
+  const P = S.point, E = P.est, svg = $('#figLevels'); svg.innerHTML = '';
+  const gk = S.ref === 'egm2008' ? 'egm2008' : 'egm96', Ng = gk === 'egm96' ? P.n96 : P.n08, ground = E.n ? E.med : (P.gps ? P.gps.hae : NaN);
+  const lv = [{ k: 'ell', v: 0 }, { k: 'geo', v: Ng }]; if (isFinite(ground)) lv.push({ k: 'gnd', v: ground });
+  const ys = lv.length === 3 ? [58, 144, 232] : [90, 190]; [...lv].sort((a, b) => b.v - a.v).forEach((l, i) => l.y = ys[i]);
+  const Y = Object.fromEntries(lv.map(l => [l.k, l.y])), W = 250;
+  if (Y.gnd != null) svg.appendChild(svgEl('path', { d: `M16 ${Y.gnd} C60 ${Y.gnd - 4} 82 ${Y.gnd - 42} 122 ${Y.gnd - 36} C150 ${Y.gnd - 32} 164 ${Y.gnd - 6} 190 ${Y.gnd} C218 ${Y.gnd + 6} 230 ${Y.gnd - 20} ${W} ${Y.gnd - 16} L${W} ${Y.gnd + 30} L16 ${Y.gnd + 30} Z`, class: 'f-ground l-brown', 'stroke-width': 2 }));
+  svg.appendChild(svgEl('path', { d: `M16 ${Y.ell}H${W}`, class: 'l-dim', 'stroke-width': 2, 'stroke-dasharray': '7 5' }));
+  svg.appendChild(svgEl('path', { d: `M16 ${Y.geo} Q46 ${Y.geo - 6} 76 ${Y.geo} T136 ${Y.geo} T196 ${Y.geo} T${W + 6} ${Y.geo}`, class: 'f-none l-cyan', 'stroke-width': 2.5 }));
+  const lab = (y, cls, a, b) => { svg.appendChild(svgEl('text', { x: W + 14, y: y - 2, 'font-size': 13, 'font-weight': 700, class: cls }, a)); svg.appendChild(svgEl('text', { x: W + 14, y: y + 14, 'font-size': 12, class: 't-dim' }, b)); };
+  lab(Y.ell, 't-dim', 'WGS84 ellipsoid', 'height 0 m');
+  lab(Y.geo, 't-cyan', `Sea level, ${gk === 'egm96' ? 'EGM96' : 'EGM2008'}`, `N = ${fmt(Ng, 2)} m`);
+  if (Y.gnd != null) lab(Y.gnd, 't-brown', 'Ground', `h = ${fmt(ground, 1)} m`);
+  const dims = svgEl('g', { opacity: P.animGeo ? 0 : 1 }); svg.appendChild(dims);
+  const dim = (x, a, b, txt, lc, tc, fr) => { const y0 = Math.min(Y[a], Y[b]), y1 = Math.max(Y[a], Y[b]); dims.appendChild(svgEl('path', { d: `M${x} ${y0 + 3}V${y1 - 3}M${x - 4} ${y0 + 9}L${x} ${y0 + 3}L${x + 4} ${y0 + 9}M${x - 4} ${y1 - 9}L${x} ${y1 - 3}L${x + 4} ${y1 - 9}`, class: 'f-none ' + lc, 'stroke-width': 1.6 })); dims.appendChild(svgEl('text', { x: x + 7, y: y0 + (y1 - y0) * fr + 4, 'font-size': 13, 'font-weight': 700, class: tc + ' halo' }, txt)); };
+  dim(44, 'ell', 'geo', `N ${fmt(Ng, 1)}`, 'l-cyan', 't-cyan', 0.5);
+  if (Y.gnd != null) { dim(118, 'geo', 'gnd', `H ${fmt(ground - Ng, 1)}`, 'l-brown', 't-brown', 0.74); dim(196, 'ell', 'gnd', `h ${fmt(ground, 1)}`, 'l-dim', 't-dim', 0.24); }
+  svg.appendChild(svgEl('text', { x: 16, y: 264, 'font-size': 12, class: 't-dim' }, 'H = h − N. Schematic, not to scale.'));
+  if (P.animGeo) tween(600, e => dims.setAttribute('opacity', e));
+}
+/* ---------------- step 2 figure: the two geoids, magnified ---------------- */
+function renderGeoids() {
+  const P = S.point, svg = $('#figGeoids'); svg.innerHTML = '';
+  const d = P.n08 - P.n96, gap = Math.min(70, Math.max(12, Math.abs(d) / 1.5 * 70)), top = 78, hi96 = P.n96 >= P.n08, W = 250;
+  const a = { name: 'EGM96 sea level', n: P.n96, lc: 'l-amber', tc: 't-amber' }, b = { name: 'EGM2008 sea level', n: P.n08, lc: 'l-cyan', tc: 't-cyan' }, up = hi96 ? a : b, lo = hi96 ? b : a;
+  svg.appendChild(svgEl('path', { d: `M16 20H${W}`, class: 'l-dim', 'stroke-width': 2, 'stroke-dasharray': '7 5' }));
+  svg.appendChild(svgEl('text', { x: W + 14, y: 24, 'font-size': 13, 'font-weight': 700, class: 't-dim' }, 'WGS84 ellipsoid'));
+  svg.appendChild(svgEl('path', { d: 'M130 27v11M130 44v7M130 56v5', class: 'l-dim', 'stroke-width': 1.5 }));
+  svg.appendChild(svgEl('text', { x: 138, y: 47, 'font-size': 12, class: 't-dim' }, `${fmt(Math.abs(up.n), 1)} m ${up.n < 0 ? 'below' : 'above'}`));
+  const mk = (m, y) => { const g = svgEl('g', { transform: `translate(0,${y})` }); g.appendChild(svgEl('path', { d: `M16 0 Q46 -5 76 0 T136 0 T196 0 T${W + 6} 0`, class: 'f-none ' + m.lc, 'stroke-width': 2.5 })); g.appendChild(svgEl('text', { x: W + 14, y: -2, 'font-size': 13, 'font-weight': 700, class: m.tc }, m.name)); g.appendChild(svgEl('text', { x: W + 14, y: 14, 'font-size': 12, class: 't-dim' }, `N = ${fmt(m.n, 2)} m`)); svg.appendChild(g); return g; };
+  mk(up, top); const g2 = mk(lo, P.animGeo ? top : top + gap);
+  const dim = svgEl('g', { opacity: P.animGeo ? 0 : 1 }); svg.appendChild(dim);
+  dim.appendChild(svgEl('path', { d: `M200 ${top + 3}V${top + gap - 3}M196 ${top + 8}L200 ${top + 3}L204 ${top + 8}M196 ${top + gap - 8}L200 ${top + gap - 3}L204 ${top + gap - 8}`, class: 'f-none l-ink', 'stroke-width': 1.6 }));
+  dim.appendChild(svgEl('text', { x: 192, y: top + gap / 2 + 5, 'text-anchor': 'end', 'font-size': 14, 'font-weight': 700, class: 't-ink halo' }, `${fmt(Math.abs(d), 2)} m`));
+  svg.appendChild(svgEl('text', { x: 16, y: 174, 'font-size': 12, class: 't-dim' }, 'The two sea-level surfaces, magnified.'));
+  if (P.animGeo) tween(600, e => { g2.setAttribute('transform', `translate(0,${top + gap * e})`); dim.setAttribute('opacity', e < 0.7 ? 0 : (e - 0.7) / 0.3); });
+}
+/* ---------------- step 3 figure: the height tape ---------------- */
+function renderTape() {
+  const P = S.point, E = P.est, svg = $('#figTape'); svg.innerHTML = '';
+  const N = geoidN(S.ref, P.lat, P.lon), items = E.ok.map(r => ({ name: r.short, v: r.hae - N, col: r.color }));
+  if (P.gps) items.push({ name: 'GPS', v: P.gps.hae - N, col: null, gps: true });
+  if (!items.length) { svg.appendChild(svgEl('text', { x: 220, y: 160, 'text-anchor': 'middle', 'font-size': 15, class: 't-dim' }, P.pending ? 'Checking sources…' : 'No heights to compare yet')); return; }
+  const c = E.n ? E.med - N : items[0].v, pm = E.n ? E.pm : 0, R = Math.max(5, pm * 1.15, ...items.map(i => Math.abs(i.v - c) * 1.12));
+  const TOP = 18, BOT = 292, MID = (TOP + BOT) / 2, X0 = 26, X1 = 112, Y = v => MID - (v - c) / R * (MID - TOP - 6);
+  svg.appendChild(svgEl('rect', { x: X0, y: TOP, width: X1 - X0, height: BOT - TOP, class: 'f-panel l-rule', 'stroke-width': 1.5, rx: 3 }));
+  if (pm) svg.appendChild(svgEl('rect', { x: X0 + 1, y: Y(c + pm), width: X1 - X0 - 2, height: Y(c - pm) - Y(c + pm), class: 'f-green', opacity: 0.16 }));
+  const { t, s } = niceTicks(c - R, c + R, 7);
+  for (const v of t) { const y = Y(v); if (y < TOP + 8 || y > BOT - 8) continue; svg.appendChild(svgEl('path', { d: `M${X1 - 12} ${y}H${X1}`, class: 'l-ink', 'stroke-width': 1.5 })); if (Math.abs(y - MID) > 26 || !E.n) svg.appendChild(svgEl('text', { x: X1 - 17, y: y + 4, 'text-anchor': 'end', 'font-size': 12, class: 't-dim' }, fmt(v, tickDec(s)))); }
+  for (let v = Math.ceil((c - R) / (s / 5)) * (s / 5); v <= c + R; v += s / 5) { const y = Y(v); if (y > TOP + 4 && y < BOT - 4) svg.appendChild(svgEl('path', { d: `M${X1 - 6} ${y}H${X1}`, class: 'l-dim', 'stroke-width': 1 })); }
+  if (E.n) {                                                              // the readout window, as on an altitude tape
+    svg.appendChild(svgEl('path', { d: `M${X0 - 6} ${MID - 17}H${X1 - 2}L${X1 + 9} ${MID}L${X1 - 2} ${MID + 17}H${X0 - 6}Z`, class: 'f-panel2 l-green', 'stroke-width': 2, 'stroke-linejoin': 'round' }));
+    svg.appendChild(svgEl('text', { x: (X0 + X1) / 2 - 4, y: MID + 7, 'text-anchor': 'middle', 'font-size': 21, 'font-weight': 700, class: 't-green disp' }, fmt(c, 1)));
+  }
+  const bh = baseHae(); if (S.base !== 'best' && isFinite(bh)) { const y = Y(bh - N); if (y > TOP && y < BOT) { svg.appendChild(svgEl('path', { d: `M${X0} ${y}H${X1 + 26}`, class: 'l-mag', 'stroke-width': 2, 'stroke-dasharray': '5 4' })); svg.appendChild(svgEl('text', { x: X0 + 3, y: y - 5, 'font-size': 11, 'font-weight': 700, class: 't-mag' }, 'baseline')); } }
+  const order = items.map((it, i) => ({ it, y: Y(it.v) })).sort((p, q) => p.y - q.y), ly = declutter(order.map(o => o.y), 24, TOP + 10, BOT - 6);
+  const bugs = [];
+  order.forEach((o, i) => {
+    const g = svgEl('g', {}), y = o.y, yl = ly[i], it = o.it, col = it.col;
+    g.appendChild(svgEl('path', { d: `M${X1 + 22} ${y}L${X1 + 34} ${yl}H${X1 + 44}`, class: 'f-none l-dim', 'stroke-width': 1 }));
+    if (it.gps) g.appendChild(svgEl('path', { d: `M${X1 + 2} ${y}L${X1 + 12} ${y - 7}L${X1 + 22} ${y}L${X1 + 12} ${y + 7}Z`, class: 'f-panel l-ink', 'stroke-width': 2 }));
+    else g.appendChild(svgEl('path', { d: `M${X1 + 2} ${y}L${X1 + 20} ${y - 8}V${y + 8}Z`, fill: col }));
+    g.appendChild(svgEl('text', { x: X1 + 49, y: yl + 5, 'font-size': 14, class: 't-ink' }, it.name));
+    g.appendChild(svgEl('text', { x: 432, y: yl + 5, 'text-anchor': 'end', 'font-size': 15, 'font-weight': 700, class: 't-ink disp' }, fmt(it.v, 1) + ' m'));
+    svg.appendChild(g); bugs.push({ g, dy: MID - y });
+  });
+  svg.appendChild(svgEl('text', { x: X0, y: 312, 'font-size': 12, class: 't-dim' }, `metres ${DATUM[S.ref].long}`));
+  if (P.animTape) tween(550, e => bugs.forEach(b => b.g.setAttribute('transform', `translate(0,${b.dy * (1 - e)})`)));
+}
+
+/* ---------------- step texts ---------------- */
+function renderSteps() {
+  const P = S.point, E = P.est, dir = n => n < 0 ? 'below' : 'above', d = P.n08 - P.n96;
+  $('#st1').innerHTML = `<div class="stephead"><span class="stepno">1</span>WGS84 ellipsoid against mean sea level</div>
+    <div class="pair"><div><div class="big">${fmt(Math.abs(P.n96), 1)} m <small>${dir(P.n96)}</small></div><span class="hint">${T('n96', 'EGM96 sea level')}</span></div>
+    <div><div class="big">${fmt(Math.abs(P.n08), 1)} m <small>${dir(P.n08)}</small></div><span class="hint">${T('n08', 'EGM2008 sea level')}${P.fine ? '' : ' <span class="badge warn" data-tip="Outside South Asia the built-in EGM2008 grid is coarser (15 arc-minutes). It is usually within 10 cm and can be up to 0.75 m off in the highest mountains.">coarse grid</span>'}</span></div></div>
+    <p>Sea level lies this far ${dir(P.n96)} the ellipsoid that GNSS measures from. ${E.n ? `The ground here is ${fmt(E.med, 0)} m above the ellipsoid, which makes it ${fmt(E.med - P.n96, 0)} m above sea level.` : `A raw GNSS height here reads ${fmt(Math.abs(P.n96), 0)} m ${P.n96 < 0 ? 'lower' : 'higher'} than a chart elevation.`}</p>`;
+  $('#st2').innerHTML = `<div class="stephead"><span class="stepno">2</span>EGM96 against EGM2008</div>
+    <div class="big">${fmt(Math.abs(d), 2)} m <small>${T('dn', 'between the two geoids')}</small></div>
+    <p>EGM2008 puts sea level ${fmt(Math.abs(d), 2)} m ${d < 0 ? 'lower' : 'higher'} than EGM96 here, so the same point reads ${fmt(Math.abs(d), 2)} m ${d < 0 ? 'higher' : 'lower'} on EGM2008 than on EGM96. ${Math.abs(d) < 1 ? 'That is small beside terrain-model error. It matters when a number has to match a product: EGM96 for DTED and charts, EGM2008 for Copernicus.' : 'That is large enough to matter: convert every source to one geoid before comparing.'}</p>`;
+  const bh = baseHae(), opts = [['best', 'Best estimate'], ...E.ok.map(r => [r.id, r.name]), ...(P.gps ? [['gps', 'Your GPS height']] : [])];
+  if (!opts.some(o => o[0] === S.base)) S.base = 'best';
+  const li = [];
+  for (const r of P.rows) {
+    const tip = modelTip(modelById(r.id)), nm = `<span><span class="sw" style="background:${r.color}"></span><span class="term" tabindex="0" data-tip="${tip}">${esc(r.name)}</span></span>`;
+    if (r.pending) li.push(`<li>${nm}<span class="hint">checking…</span></li>`);
+    else if (r.err) li.push(`<li>${nm}<span class="err">${esc(r.err)}</span></li>`);
+    else if (!isFinite(r.hae)) li.push(`<li>${nm}<span class="hint">${esc(r.why || 'no data here')}</span></li>`);
+    else li.push(`<li>${nm}<b>${S.base === r.id ? 'baseline' : sgn(r.hae - bh, 1) + ' m'}</b></li>`);
+  }
+  if (P.gps) li.push(`<li><span><span class="sw" style="background:var(--ink);transform:rotate(45deg)"></span>Your GPS height</span><b>${S.base === 'gps' ? 'baseline' : isFinite(bh) ? sgn(P.gps.hae - bh, 1) + ' m' : fmt(P.gps.hae - geoidN(S.ref, P.lat, P.lon), 1) + ' m'}</b></li>`);
+  $('#st3').innerHTML = `<div class="stephead"><span class="stepno">3</span>Terrain sources against each other</div>` + (P.rows.length || P.gps ? `
+    <div class="big">${E.n > 1 ? fmt(E.spread, 1) + ' m' : E.n === 1 ? 'One source' : P.pending ? 'Checking' : 'No data'} <small class="blk">${E.n > 1 ? `between the ${E.n} independent sources` : E.n === 1 ? 'nothing independent to check it against' : ''}</small></div>
+    ${E.ok.length ? `<label for="cmpBase" class="noprint">Measure differences from</label><select id="cmpBase" class="noprint">${opts.map(o => `<option value="${o[0]}" ${o[0] === S.base ? 'selected' : ''}>${esc(o[1])}</option>`).join('')}</select>` : ''}
+    <ul class="difflist">${li.join('')}</ul>` : `<p>No sources are active. ${netOK() ? 'Switch some on under Sources.' : S.emcon ? 'EMCON is on: load tiles on the Data page, or switch EMCON off.' : 'This device is offline: load tiles on the Data page.'}</p>`);
+  const sel = $('#cmpBase'); if (sel) sel.onchange = () => { S.base = sel.value; renderPoint(); };
+}
+
+/* ---------------- which source looks wrong by exactly the geoid offset ---------------- */
+function suspects(P, E) {
+  const aN = Math.abs(P.n96), sure = [], maybe = [], steep = P.slope != null && P.slope >= 20; if (aN < 8 || !E.n) return { sure, maybe, both: false };
+  for (const r of E.ok) {
+    const oth = E.reps.filter(x => x !== r && x.family !== r.family).map(x => x.hae); if (!oth.length) continue;
+    const miss = Math.abs(Math.abs(r.hae - median(oth)) - aN);
+    if (miss < Math.max(3, 0.12 * aN)) sure.push(r); else if (!steep && miss < Math.max(5, 0.22 * aN)) maybe.push(r);
+  }
+  return { sure, maybe, both: E.n === 2 && sure.length >= 2 };
+}
+
+/* ---------------- plain-language reading of the numbers ---------------- */
+function renderMeaning() {
+  const P = S.point, E = P.est, aN = Math.abs(P.n96), o = [], tan = d => Math.tan(d * Math.PI / 180);
+  if (!isFinite(P.n96)) { $('#meaning').innerHTML = ''; return; }
+  o.push(`<p><strong>Sea level against the ellipsoid.</strong> Mean sea level lies ${fmt(aN, 1)} m (${FT(aN)} ft) ${P.n96 < 0 ? 'below' : 'above'} the smooth WGS84 ellipsoid here, so a raw GNSS height reads ${fmt(aN, 1)} m ${P.n96 < 0 ? 'lower' : 'higher'} than the elevation a chart would print. The cause is gravity: ${P.n96 < -20 ? 'this region lies in the Indian Ocean geoid low, where weaker gravity lets the sea-level surface sag' : 'mass inside the Earth is unevenly spread, so the sea-level surface rises and dips'}.</p>`);
+  o.push(`<p><strong>If the two references get mixed up.</strong> Typing an ellipsoid height into a field that expects sea-level elevation, or the reverse, puts the point ${fmt(aN, 0)} m (${FT(aN)} ft) off in height. Wherever a line of sight is intersected with that elevation the ground position moves too: about ${Math.round(aN / tan(10))} m when looking down at 10°, about ${Math.round(aN / tan(30))} m at 30°. A navigation unit of the TOTEM 3000 class works on the ellipsoid internally and converts with a stored geoid, so what matters is that a waypoint elevation goes in using the reference the system expects. Chart, DTED and ICAO elevations are sea-level heights on EGM96.</p>`);
+  const sus = suspects(P, E), nm = l => esc(l.map(r => r.name).join(' and '));
+  if (sus.both) o.push(`<p class="flag bad"><strong>Probable reference mix-up.</strong> ${nm(sus.sure)} differ by about ${fmt(aN, 0)} m, the size of the geoid offset here. One of them is quoting ellipsoid height while set as sea level, or the reverse. Check “heights in file are” on the Data page, or add a third source to see which one is right.</p>`);
+  else if (sus.sure.length) o.push(`<p class="flag bad"><strong>Probable reference mix-up.</strong> ${nm(sus.sure)} ${sus.sure.length > 1 ? 'sit' : 'sits'} about ${fmt(aN, 0)} m from the other sources, the size of the geoid offset here. Its “heights in file are” setting on the Data page is probably wrong, or the product is ellipsoidal while labelled as sea level. This is the very error described above, seen in real data.</p>`);
+  if (sus.maybe.length && !sus.both) o.push(`<p class="flag"><strong>Possible reference mix-up.</strong> ${nm(sus.maybe)} ${sus.maybe.length > 1 ? 'are' : 'is'} ${sus.maybe.map(r => fmt(Math.abs(r.hae - E.med), 0) + ' m').join(' and ')} from the estimate, close to the geoid offset of ${fmt(aN, 0)} m here. Check its “heights in file are” setting on the Data page.</p>`);
+  if (E.n >= 2 && !sus.both) {
+    const names = E.reps.map(r => r.name).join(', '), sp = E.spread;
+    o.push(`<p${sp > 12 ? ' class="flag"' : ''}><strong>How far to trust it.</strong> ${E.n} independent sources (${esc(names)}) agree within ${fmt(sp, 1)} m. ${E.sc ? `The ground is ${E.sc.name} here, with a slope of about ${fmt(P.slope, 0)}°; 30 m models are typically good to about ±${E.sc.pm} m on such ground.` : ''} ${sp <= 3 ? 'That is as good as these models get.' : sp <= 12 ? 'Gaps of this size usually come from sloping ground, where a small sideways shift between models becomes a height difference, or from trees and buildings.' : 'A gap this wide belongs to cliffs, ridgelines, deep valleys, glaciers and moving dunes, or to a place where one model filled a hole with poorer data. Look at the satellite picture and run an Area study to see whether it is local.'} Treat the estimate as good to about ±${E.pm} m.</p>`);
+  } else if (E.n === 1) o.push(`<p><strong>How far to trust it.</strong> Only one independent source answered (${esc(E.reps[0].name)}), so nothing checks it. ${E.sc ? `The ground is ${E.sc.name} (slope about ${fmt(P.slope, 0)}°), where 30 m models are typically good to about ±${E.sc.pm} m.` : 'On open ground a 30 m model is usually right to a few metres; in mountains it can be out by 10 to 20 m.'} Switch on another source to cross-check.</p>`);
+  if (E.n) {
+    const fab = E.ok.find(r => r.id === 'fabdem'), cop = E.ok.find(r => r.id === 'cop30');
+    if (fab && cop && cop.hae - fab.hae > 2) o.push(`<p><strong>Cover on the ground.</strong> FABDEM, the bare-earth model, is ${fmt(cop.hae - fab.hae, 1)} m below Copernicus here. About that much tree or building cover stands on this spot, and the ground itself is nearer the FABDEM value of ${fmt(fab.hae - geoidN(S.ref, P.lat, P.lon), 0)} m.</p>`);
+    else o.push(`<p><strong>Surface or ground.</strong> ${fab ? 'Apart from FABDEM, these' : 'These'} are surface models: over trees or buildings they read high by the height of the cover. The satellite picture shows what stands on the spot. On open ground it makes no difference.</p>`);
+  }
+  if (E.ownLeft.length) o.push(`<p><strong>Your own raster.</strong> ${esc(E.ownLeft.map(r => r.name).join(' and '))} ${E.ownLeft.length > 1 ? 'are' : 'is'} compared against the estimate and ${E.ownLeft.length > 1 ? 'do' : 'does'} not feed it: ${E.ownLeft.map(r => `${esc(r.name)} is ${sgn(r.hae - E.med, 1)} m from the estimate`).join(', ')}.</p>`);
+  const d = P.n08 - P.n96;
+  o.push(`<p><strong>EGM96 or EGM2008.</strong> The two geoid models differ by ${fmt(Math.abs(d), 2)} m here. ${Math.abs(d) < 1 ? 'That is smaller than the error of any 30 m terrain model, so the choice only matters when the number has to match a particular product.' : 'That is large and typical of high mountains, where the older EGM96 lacks detail.'}</p>`);
+  if (P.gps && E.n) { const g = P.gps.hae - E.med, mix = aN > 8 && Math.abs(Math.abs(g) - aN) < Math.max(3, 0.12 * aN); o.push(`<p${mix ? ' class="flag bad"' : ''}><strong>Your GPS height.</strong> It is ${fmt(Math.abs(g), 1)} m ${g >= 0 ? 'above' : 'below'} the best estimate. ${mix ? 'That is the size of the geoid offset, so the reference chosen for the GPS height is almost certainly the wrong one: change it beside the height box.' : Math.abs(g) < 15 ? 'That is within what an ordinary receiver achieves in the vertical (10 to 20 m), plus the height of the antenna above the ground.' : 'That is more than an ordinary receiver error. Check the reference selected for the GPS height and whether the receiver was on the ground.'}</p>`); }
+  $('#meaning').innerHTML = o.join('');
+}
+
+/* ---------------- DTED cross-check ---------------- */
+function renderDted() {
+  const P = S.point, E = P.est, row = P.rows.find(r => r.id === 'dted' && isFinite(r.hae)), pan = $('#dtedPanel');
+  if (!row || !(row.src instanceof DtedSource)) { pan.hidden = true; return; } pan.hidden = false;
+  const src = row.src, spec = DTED_SPEC[src.level], oth = E.reps.filter(r => r.id !== 'dted' && !(modelById(r.id) || {}).custom), N96 = P.n96, o = [];
+  const dH = row.hae - N96;
+  if (!oth.length) o.push(`<p>The DTED post value here is <strong>${fmt(dH, 1)} m</strong> above mean sea level (EGM96). There is no other source to check it against yet: switch on the online sources or load another tile.</p>`);
+  else {
+    const mo = median(oth.map(r => r.hae)), d = row.hae - mo, ad = Math.abs(d), aN = Math.abs(N96), mix = aN > 8 && Math.abs(ad - aN) < Math.max(3, 0.12 * aN);
+    const cls = mix || (spec && ad > spec.le) ? 'bad' : spec && ad > spec.le / 2 ? 'warn' : 'ok';
+    o.push(`<div class="pair" style="grid-template-columns:repeat(3,1fr)"><div><div class="big">${fmt(dH, 0)} m</div><span class="hint">DTED, MSL EGM96</span></div><div><div class="big">${fmt(mo - N96, 0)} m</div><span class="hint">${oth.length > 1 ? 'median of ' + oth.length + ' other sources' : esc(oth[0].name)}</span></div><div><div class="big">${sgn(d, 1)} m</div><span class="hint">DTED minus the others</span></div></div>`);
+    o.push(`<p><span class="badge ${cls}">${mix ? 'reference mix-up likely' : spec ? (ad <= spec.le ? 'inside' : 'outside') + ` the Level ${src.level} objective of ${spec.le} m` : 'no accuracy objective for this level'}</span>${src.acc != null ? ` <span class="badge ${ad <= src.acc ? 'ok' : 'warn'}">${ad <= src.acc ? 'inside' : 'outside'} the file’s own stated ${src.acc} m</span>` : ''}</p>`);
+    if (mix) o.push(`<p class="flag bad">The difference is about ${fmt(aN, 0)} m, the size of the geoid offset here. The file is probably holding ellipsoid heights, or its “heights in file are” setting on the Data page is wrong. DTED should be mean sea level (EGM96).</p>`);
+    else if (spec) o.push(`<p>${ad <= spec.le ? `DTED Level ${src.level} asks for 90% of posts to be within ${spec.le} m of the truth. A ${fmt(ad, 1)} m difference from independent models is ${ad <= spec.le / 3 ? 'comfortably ' : ''}inside that.` : `DTED Level ${src.level} asks for 90% of posts to be within ${spec.le} m of the truth, and this post differs from the other models by ${fmt(ad, 1)} m. One post in ten may do that legitimately. Check the slope here, look for a void or sheet edge, and run an Area study to see whether it is a single post or the whole cell.`}</p>`);
+    const sr = E.sr;
+    if (sr) { const ds = row.hae - sr.hae; o.push(`<p>Against ${esc(sr.name)}, ${sr.id === 'srtm' ? 'the usual parent of public DTED' : 'the reprocessed Shuttle radar data'}, the difference is ${sgn(ds, 1)} m. ${E.dtedIsSrtm ? 'That closeness says this DTED was built from the Shuttle radar data, so it shows the ground, trees and buildings as they were in February 2000. For that reason it is counted with the Shuttle radar family in the estimate and does not get a separate vote.' : 'That is more than SRTM-derived DTED would show at one post, so this file probably comes from another compilation, such as stereo imagery or maps, and may represent the bare ground. It is treated as an independent source in the estimate.'}</p>`); }
+    else if (netOK()) o.push(`<p class="hint">Switch on “SRTM 1 arc-second” under Sources for a like-for-like check: public DTED is built from SRTM and agrees with it to a metre or two.</p>`);
+  }
+  o.push(`<p>DTED stores whole metres at posts ${src.arc >= 1 ? src.arc.toFixed(0) : src.arc.toFixed(2)} arc-second${Math.abs(src.arc - 1) < 0.01 ? '' : 's'} apart (about ${Math.round(src.arc * 30.9)} m). The value above is interpolated between the four posts around the point.</p>`);
+  o.push(`<details class="more"><summary>What the file header says</summary><dl class="facts">${src.facts().map(f => `<dt>${esc(f[0])}</dt><dd>${esc(f[1])}</dd>`).join('')}</dl></details>`);
+  if (src.security && !/^U/i.test(src.security)) o.push(`<p class="flag">The header carries the security code “${esc(src.security)}”. The file is read only inside this browser tab. Handle it under your own rules; EMCON on the Data page stops all lookups and map requests.</p>`);
+  $('#dtedCheck').innerHTML = o.join('');
+}
+
+/* ---------------- the full table ---------------- */
+function renderTable() {
+  const P = S.point, bh = baseHae(), all = P.rows.map(r => ({ ...r })); if (P.gps) all.push({ name: 'Your GPS height', color: 'var(--ink)', gps: true, ...P.gps });
+  const cols = ['egm96', 'egm2008', 'hae'];
+  let h = `<thead><tr><th>Source</th><th>${T('native', 'Value from source')}</th><th class="l">${T('fileref', 'Its reference')}</th>${cols.map(c => `<th>${T('c_' + c, DATUM[c].short)}</th>`).join('')}<th>${T('base', 'Against baseline')}</th></tr></thead>`;
+  for (const r of all) {
+    const m = r.id ? modelById(r.id) : null, st = r.pending ? 'checking…' : r.err ? `<span class="err">${esc(r.err)}</span>` : !isFinite(r.native) ? esc(r.why || 'no data here') : DATUM[r.datum].short;
+    h += `<tr><td><span class="sw" style="background:${r.color}"></span><span ${m ? `class="term" tabindex="0" data-tip="${modelTip(m)}"` : ''}>${esc(r.name)}</span>${r.id ? ` <span class="hint">${viaLabel(r)}${r.provider ? ', ' + esc(r.provider) : ''}</span>` : ''}</td>
+      <td data-l="Value from source">${isFinite(r.native) ? fmt(r.native, 1) + ' m' : ''}</td><td class="l" data-l="Its reference">${st}</td>
+      ${cols.map(c => `<td data-l="${DATUM[c].short}">${isFinite(r.hae) ? fmt(r.hae - geoidN(c, P.lat, P.lon), 1) + ' m' : ''}</td>`).join('')}
+      <td data-l="Against baseline">${isFinite(r.hae) && isFinite(bh) ? sgn(r.hae - bh, 1) + ' m' : ''}</td></tr>`;
+  }
+  $('#ptTable').innerHTML = all.length ? h : '';
+  $('#ptEmpty').innerHTML = all.length ? '' : `<div class="empty"><strong>No sources yet.</strong> ${netOK() ? 'Switch some on under Sources, or load' : 'Load'} DTED, GeoTIFF or .hgt tiles on the Data page.</div>`;
+}
+
+function renderPoint() {
+  const P = S.point; if (!P) return;
+  P.gps = S.gpsH == null ? null : { native: S.gpsH, datum: S.gpsRef, hae: S.gpsH + geoidN(S.gpsRef, P.lat, P.lon) };
+  P.est = estimate(P);
+  P.animGeo = !P.rendered; P.animTape = !P.pending && !P.tapeDone;
+  $('#coordRead').innerHTML = `Read as ${fmtDMS(P.lat, P.lon)}<br>${fmtDM(P.lat, P.lon)}`;
+  $('#printHead').innerHTML = `<p><strong>${fmtLL(P.lat, P.lon)}</strong> (${fmtDMS(P.lat, P.lon)}). Report made ${new Date().toLocaleString()}.</p>`;
+  renderReadout(); renderSteps(); renderLevels(); renderGeoids(); renderTape(); renderDted(); renderMeaning(); renderTable(); renderNeed();
+  P.rendered = true; if (!P.pending) P.tapeDone = true;
+  updateMaps();
+}
+
+/* =====================================================================
+   ui (2): maps, sources, files, the Area page, reports, start-up
+   ===================================================================== */
+/* ---------------- maps (Leaflet is loaded only when first needed) ---------------- */
+const maps = {};
+let leafP = null;
+const ensureLeaflet = () => window.L ? Promise.resolve() : (leafP || (leafP = loadScript('leaflet.js?v=' + APP.build).catch(e => { leafP = null; throw e; })));
+const BLOCKMSG = 'This window blocks pictures and data from outside servers (an in-app preview does this). Open the page in Chrome, Edge, Firefox or Safari, or from your GitHub address: the satellite map and online sources work there.';
+function mapNote(msg) { $$('.mapnote').forEach(n => { n.textContent = msg; n.hidden = !msg; }); }
+document.addEventListener('securitypolicyviolation', e => { if (/img-src|connect-src|default-src/.test(e.violatedDirective || '')) { if (!S.blocked) { S.blocked = true; mapNote(BLOCKMSG); renderNet(); } } });
+function makeMap(id) {
+  const m = L.map(id, { zoomControl: true, attributionControl: true, worldCopyJump: true, tap: false }).setView([S.lat, S.lon], 13);
+  const Grid = L.GridLayer.extend({ createTile(c) { const t = document.createElement('canvas'), s = this.getTileSize(); t.width = s.x; t.height = s.y; const x = t.getContext('2d'); const nw = m.unproject(c.scaleBy(s), c.z), se = m.unproject(c.add([1, 1]).scaleBy(s), c.z); const span = nw.lat - se.lat, step = [10, 5, 2, 1, .5, .25, .1, .05, .02, .01, .005, .002, .001].find(v => span / v >= 1.5) || .001; const dec = step >= 1 ? 0 : step >= .01 ? 2 : 3; x.strokeStyle = 'rgba(255,255,255,.6)'; x.fillStyle = '#fff'; x.shadowColor = '#000'; x.shadowBlur = 3; x.font = '11px sans-serif'; x.lineWidth = 1; for (let la = Math.ceil(se.lat / step) * step; la <= nw.lat; la += step) { const y = m.project([la, nw.lng], c.z).y - c.y * s.y; x.beginPath(); x.moveTo(0, y); x.lineTo(s.x, y); x.stroke(); x.fillText(la.toFixed(dec) + '°', 3, y - 3); } for (let lo = Math.ceil(nw.lng / step) * step; lo <= se.lng; lo += step) { const X = m.project([nw.lat, lo], c.z).x - c.x * s.x; x.beginPath(); x.moveTo(X, 0); x.lineTo(X, s.y); x.stroke(); x.fillText(lo.toFixed(dec) + '°', X + 3, 12); } return t; } });
+  const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, maxNativeZoom: 18, attribution: 'Imagery © Esri, Maxar, Earthstar Geographics' });
+  const s2 = L.tileLayer('https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2020_3857/default/g/{z}/{y}/{x}.jpg', { maxZoom: 19, maxNativeZoom: 14, attribution: 'Sentinel-2 cloudless 2020 by EOX' });
+  const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap contributors' });
+  const topo = L.tileLayer('https://tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom: 17, attribution: '© OpenTopoMap (CC-BY-SA), © OpenStreetMap contributors' });
+  const names = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, maxNativeZoom: 18, zIndex: 4 });
+  const blank = L.layerGroup(), grid = new Grid({ zIndex: 5 });
+  grid.addTo(m);
+  L.control.layers({ 'Satellite, high detail': sat, 'Satellite, Sentinel-2': s2, 'Streets': osm, 'Contours': topo, 'No background': blank }, { 'Place names': names, 'Latitude and longitude lines': grid }, { collapsed: true, position: 'topright' }).addTo(m);
+  L.control.scale({ imperial: false }).addTo(m);
+  const o = { m, sat, s2, osm, topo, names, blank, tiles: L.layerGroup().addTo(m), box: null, overlay: null };
+  o.pt = L.circleMarker([S.lat, S.lon], { radius: 8, color: '#fff', weight: 3, fillColor: '#E0483F', fillOpacity: 1, interactive: false }).addTo(m);
+  /* if the detailed pictures cannot load, fall back, and say why instead of leaving a blank map */
+  let ok = 0, bad = 0, bad2 = 0;
+  sat.on('tileload', () => { ok++; if (!S.blocked) mapNote(''); });
+  sat.on('tileerror', () => { if (ok || ++bad < 4 || !m.hasLayer(sat)) return; sat.remove(); s2.addTo(m); mapNote('The detailed satellite pictures could not be loaded, so the map switched to Sentinel-2 pictures (10 m detail).'); });
+  s2.on('tileload', () => { ok++; });
+  s2.on('tileerror', () => { if (ok || ++bad2 < 4) return; mapNote(S.blocked ? BLOCKMSG : 'Satellite pictures could not be loaded. Check the connection. If this is an in-app preview or a restricted network, open the page in a normal browser.'); });
+  m.on('click', e => { if (!S.drawing) setPoint(e.latlng.lat, e.latlng.wrap().lng); });
+  applyBase(o);
+  return o;
+}
+/* choose the background for the current connection state */
+function applyBase(o) {
+  const m = o.m, tileLayers = [o.sat, o.s2, o.osm, o.topo];
+  if (netOK()) { if (!tileLayers.some(l => m.hasLayer(l))) { o.blank.remove(); o.sat.addTo(m); o.names.addTo(m); } }
+  else { tileLayers.forEach(l => l.remove()); o.names.remove(); if (!m.hasLayer(o.blank)) o.blank.addTo(m); }
+}
+function updateMaps(fly) {
+  $$('.gEarth').forEach(a => a.href = `https://earth.google.com/web/@${S.lat.toFixed(6)},${S.lon.toFixed(6)},0a,3000d,35y,0h,0t,0r`);
+  $$('.gMaps').forEach(a => a.href = `https://www.google.com/maps/@?api=1&map_action=map&center=${S.lat.toFixed(6)},${S.lon.toFixed(6)}&zoom=16&basemap=satellite`);
+  $$('.maplinks').forEach(d => d.hidden = S.emcon);
+  for (const k in maps) { const o = maps[k]; o.pt.setLatLng([S.lat, S.lon]); if (fly) o.m.setView([S.lat, S.lon], Math.max(o.m.getZoom(), 11)); o.tiles.clearLayers(); for (const f of S.files) { const b = f.src.bbox; L.rectangle([[b[1], b[0]], [b[3], b[2]]], { color: modelById(f.model).color, weight: 1.5, fill: false, interactive: false }).addTo(o.tiles); } }
+  const a = maps.amap; if (a) { if (a.box) a.box.remove(); a.box = null; if ($('#aSize').value !== 'map') { const bb = areaBox(); a.box = L.rectangle([[bb[1], bb[0]], [bb[3], bb[2]]], { color: '#fff', weight: 2.5, dashArray: '6 5', fill: false, interactive: false }).addTo(a.m); } }
+}
+function fitArea() { const a = maps.amap; if (!a || $('#aSize').value === 'map') return; const bb = areaBox(); a.m.fitBounds([[bb[1], bb[0]], [bb[3], bb[2]]], { padding: [24, 24] }); }
+async function showMap(id) { try { await ensureLeaflet(); } catch (e) { $('#' + id).textContent = ''; return; } if (!maps[id]) { maps[id] = makeMap(id); if (id === 'amap') { maps.amap.m.on('moveend', () => { if ($('#aSize').value === 'map') updateMaps(); }); setTimeout(fitArea, 60); } } setTimeout(() => { maps[id].m.invalidateSize(); updateMaps(); }, 40); }
+function setPoint(lat, lon, fly) {
+  S.lat = lat; S.lon = lon; const s = lat.toFixed(5) + ', ' + lon.toFixed(5);
+  $('#coord').value = s; $('#aCoord').value = s; $('#coordErr').textContent = ''; $('#aCoordErr').textContent = '';
+  saveState(); updateMaps(fly); computePoint();
+}
+function setBox(bb) { S.box = bb; $('#aSize').value = 'corners'; $('#aCorners').hidden = false; $('#aSW').value = bb[1].toFixed(5) + ', ' + bb[0].toFixed(5); $('#aNE').value = bb[3].toFixed(5) + ', ' + bb[2].toFixed(5); updateMaps(); }
+/* draw a rectangle with mouse or finger */
+function startDraw() {
+  const o = maps.amap; if (!o || S.drawing) return; const m = o.m, c = m.getContainer(), btn = $('#bDraw');
+  S.drawing = true; m.dragging.disable(); m.touchZoom.disable(); m.doubleClickZoom.disable(); m.boxZoom.disable();
+  c.style.cursor = 'crosshair'; c.style.touchAction = 'none'; btn.textContent = 'Now drag a box on the map'; btn.classList.add('armed');
+  c.scrollIntoView({ block: 'center', behavior: REDUCED ? 'auto' : 'smooth' });
+  let a = null, r = null;
+  const end = () => { ['pointerdown', 'pointermove', 'pointerup', 'pointercancel'].forEach((n, i) => c.removeEventListener(n, [dn, mv, up, up][i], true)); m.dragging.enable(); m.touchZoom.enable(); m.doubleClickZoom.enable(); m.boxZoom.enable(); c.style.cursor = ''; c.style.touchAction = ''; btn.textContent = 'Draw the area on the map'; btn.classList.remove('armed'); setTimeout(() => { S.drawing = false; }, 150); };
+  const dn = e => { if (e.target.closest && e.target.closest('.leaflet-control')) return; e.preventDefault(); e.stopPropagation(); a = m.mouseEventToLatLng(e); r = L.rectangle([a, a], { color: '#FFD166', weight: 2, interactive: false }).addTo(m); try { c.setPointerCapture(e.pointerId); } catch (x) { } };
+  const mv = e => { if (!r) return; e.preventDefault(); e.stopPropagation(); r.setBounds(L.latLngBounds(a, m.mouseEventToLatLng(e))); };
+  const up = e => { if (!r) return; e.preventDefault(); e.stopPropagation(); const b = r.getBounds(); r.remove(); r = null; end(); if (b.getNorth() - b.getSouth() > 1e-4 && b.getEast() - b.getWest() > 1e-4) setBox([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]); };
+  c.addEventListener('pointerdown', dn, true); c.addEventListener('pointermove', mv, true); c.addEventListener('pointerup', up, true); c.addEventListener('pointercancel', up, true);
+}
+
+/* ---------------- connection state ---------------- */
+function renderNet() {
+  const chip = $('#netChip'), on = netOK();
+  chip.className = 'status' + (S.emcon ? ' emcon' : on ? ' on' : '');
+  chip.querySelector('span').textContent = S.emcon ? 'EMCON' : S.blocked ? 'BLOCKED' : S.online ? 'ONLINE' : 'OFFLINE';
+  chip.setAttribute('data-tip', S.emcon ? 'EMCON is on: no lookups, no map pictures, no location service. Tap to switch it off.' : S.blocked ? BLOCKMSG : S.online ? 'Online: elevation lookups and satellite pictures are live. Tap for EMCON, under which no coordinate leaves this device.' : 'This device has no connection. Built-in geoids and loaded files still work.');
+  $('#emcon').checked = S.emcon;
+  $('#netText').textContent = S.emcon ? 'EMCON is on. No coordinate leaves this device.' : S.blocked ? BLOCKMSG : S.online ? 'Online. Elevation lookups and the satellite map are live.' : 'Offline. Built-in geoids and any files you load still work.';
+  for (const k in maps) applyBase(maps[k]);
+  renderSources();
+}
+function setEmcon(v) { S.emcon = v; saveState(); renderNet(); updateMaps(); computePoint(); toast(v ? 'EMCON on: no lookups, no map pictures' : 'EMCON off: online sources live'); if (!v) warm(); }
+function warm() { if (!netOK() || warm.done) return; warm.done = true; for (const h of ['https://opentopography.s3.sdsc.edu', 'https://server.arcgisonline.com']) { const l = el('link', { rel: 'preconnect', href: h, crossorigin: '' }); document.head.appendChild(l); } }
+
+/* ---------------- sources: chips on the Point page, switches on the Data page ---------------- */
+function renderSources() {
+  const ids = listModels(), act = ids.filter(id => modelState(id).active);
+  $('#srcChecks').innerHTML = ids.map(id => { const m = modelById(id), st = modelState(id); return `<button class="chipbtn" data-id="${id}" aria-pressed="${st.active}" ${st.avail ? '' : 'disabled'} data-tip="${modelTip(m)}"><span class="sw" style="background:${m.color}"></span>${esc(m.name)}<small>${st.via === 'file' ? 'file' : st.avail ? 'online' : S.emcon ? 'off under EMCON' : 'needs a connection'}</small></button>`; }).join('');
+  $('#srcCount').textContent = `${act.length} on`;
+  $('#srcHint').textContent = netOK() ? 'Tap a source to switch it on or off. Copernicus, AW3D30 and NASADEM come from three different sensors, so together they check each other.' : S.emcon ? 'EMCON is on, so only files you have loaded are used.' : S.blocked ? 'Outside servers are blocked in this window, so only loaded files are used.' : 'No connection, so only files you have loaded are used.';
+  $('#liveChecks').innerHTML = MODELS.filter(m => m.online).map(m => `<label class="switch"><input type="checkbox" value="${m.id}" ${S.on.has(m.id) ? 'checked' : ''}><span><span class="sw" style="background:${m.color}"></span><strong>${m.name}</strong><span class="hint">${m.kind}. ${m.note}</span></span></label>`).join('');
+}
+function toggleModel(id) { if (hasFile(id)) { S.off.has(id) ? S.off.delete(id) : S.off.add(id); } else { S.on.has(id) ? S.on.delete(id) : S.on.add(id); } saveState(); renderSources(); computePoint(); }
+
+/* ---------------- files ---------------- */
+async function addFiles(list) {
+  const errs = [];
+  for (const file of list) {
+    try {
+      if (S.files.some(f => f.name === file.name && f.size === file.size)) continue;
+      const head = new Uint8Array(await file.slice(0, 4).arrayBuffer()), sig = String.fromCharCode(...head);
+      let src, model, datum;
+      if (sig === 'UHL1' || /\.dt\d$/i.test(file.name) || /\.dted$/i.test(file.name)) { src = new DtedSource(file.name, await file.arrayBuffer()); model = 'dted'; datum = src.vdatum; }
+      else if (sig.startsWith('II') || sig.startsWith('MM') || /\.tiff?$/i.test(file.name)) src = await TiffSource.open(file);
+      else if (/\.hgt$/i.test(file.name)) src = new HgtSource(file.name, await file.arrayBuffer());
+      else throw new Error('Not a DTED, GeoTIFF or .hgt file. Extract zip archives first.');
+      if (!model) {
+        const g = guessModel(file.name);
+        if (g) { model = g.id; datum = g.datum; }
+        else { const id = 'u' + (Object.keys(customs).length + 1), nm = file.name.replace(/\.[^.]+$/, ''); customs[id] = { id, name: nm.length > 26 ? nm.slice(0, 25) + '…' : nm, short: nm.length > 12 ? nm.slice(0, 11) + '…' : nm, family: id, kind: 'Your own raster', note: 'Set what its heights are measured from on the Data page.', datum: 'egm96', color: CUSTOM_COLORS[(Object.keys(customs).length) % CUSTOM_COLORS.length], arc: src.arc, custom: true }; model = id; datum = 'egm96'; }
+      }
+      S.files.push({ name: file.name, size: file.size, model, datum, src });
+    } catch (e) { errs.push(`${file.name}: ${e.message}`); }
+  }
+  $('#fErr').textContent = errs.join('  ');
+  renderFiles(); renderSources(); computePoint();
+}
+function renderFiles() {
+  const box = $('#fList');
+  if (!S.files.length) { box.innerHTML = ''; $('#fTotal').textContent = 'No files loaded.'; updateMaps(); return; }
+  const opts0 = [...MODELS.filter(m => !m.onlineOnly && m.id !== 'dted'), ...Object.values(customs)];
+  box.innerHTML = S.files.map((f, i) => {
+    const b = f.src.bbox, dted = f.src instanceof DtedSource, opts = dted ? [modelById('dted')] : opts0;
+    return `<div class="filecard"><div class="fname"><span class="sw" style="background:${modelById(f.model).color}"></span>${esc(f.name)}</div>
+      <div class="hint">${f.src.info}. Covers ${b[1].toFixed(2)}° to ${b[3].toFixed(2)}°N, ${b[0].toFixed(2)}° to ${b[2].toFixed(2)}°E. ${(f.size / 1048576).toFixed(1)} MB.</div>
+      <div class="frow"><div><label for="fm${i}">Model</label><select id="fm${i}" data-i="${i}" data-k="model" ${dted ? 'disabled' : ''}>${opts.map(c => `<option value="${c.id}" ${c.id === f.model ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
+      <div><label for="fd${i}">Heights in file are${customs[f.model] && !f.checked ? ' <span class="badge warn">check this</span>' : ''}</label><select id="fd${i}" data-i="${i}" data-k="datum">${Object.keys(DATUM).map(d => `<option value="${d}" ${d === f.datum ? 'selected' : ''}>${DATUM[d].long}</option>`).join('')}</select></div></div>
+      ${dted ? `<details class="more"><summary>What the header says</summary><dl class="facts">${f.src.facts().map(x => `<dt>${esc(x[0])}</dt><dd>${esc(x[1])}</dd>`).join('')}</dl></details>` : ''}
+      <div style="margin-top:10px"><button class="btn small" data-rm="${i}">Remove</button></div></div>`;
+  }).join('');
+  const tot = S.files.reduce((a, f) => a + f.size, 0);
+  $('#fTotal').innerHTML = `${S.files.length} file${S.files.length > 1 ? 's' : ''}, ${(tot / 1048576).toFixed(0)} MB. ${tot > 3 * 1073741824 ? '<span class="badge warn">more than 3 GB loaded</span> ' : ''}The model and the vertical reference were read from each file’s name or header. Correct them if they are wrong: a wrong reference shifts every height by the geoid offset.`;
+  updateMaps();
+}
+function renderNeed() {
+  const a = Math.floor(S.lat), o = Math.floor(S.lon);
+  $('#needFor').textContent = `For ${fmtLL(S.lat, S.lon)}: the 1° tile whose south-west corner is ${Math.abs(a)}°${a >= 0 ? 'N' : 'S'} ${Math.abs(o)}°${o >= 0 ? 'E' : 'W'}.`;
+  $('#needTable').innerHTML = '<thead><tr><th>Model</th><th class="l">File</th><th class="l">Get it</th><th class="l">Loaded</th></tr></thead>' + MODELS.filter(c => !c.onlineOnly).map(c => { const have = S.files.some(f => f.model === c.id && covers(f.src.bbox, S.lat, S.lon)); return `<tr><td><span class="sw" style="background:${c.color}"></span>${c.name}</td><td class="l" data-l="File" style="word-break:break-all">${esc(c.tile(a, o))}</td><td class="l" data-l="Get it">${c.key ? `<a href="${OT + c.key(a, o)}" target="_blank" rel="noopener">Download this tile</a>` : `<a href="${c.portal}" target="_blank" rel="noopener">Open the download site</a>`}</td><td class="l" data-l="Loaded">${have ? '<span class="badge ok">yes</span>' : ''}</td></tr>`; }).join('');
+}
+function renderCatalog() {
+  $('#catTable').innerHTML = '<thead><tr><th>Model</th><th class="l">What it measures</th><th class="l">Detail</th><th class="l">Heights are</th><th class="l">Family</th><th class="l">Notes</th></tr></thead>' + MODELS.map(c => `<tr><td><span class="sw" style="background:${c.color}"></span><a href="${c.portal}" target="_blank" rel="noopener">${c.name}</a></td><td class="l" data-l="What it measures">${c.kind}</td><td class="l" data-l="Detail">${c.res}</td><td class="l" data-l="Heights are">${DATUM[c.datum].short}</td><td class="l" data-l="Family">${FAMILY[c.family]}</td><td class="l" data-l="Notes" style="min-width:200px">${c.note}</td></tr>`).join('');
+}
+
+/* ---------------- area study ---------------- */
+function areaBox() {
+  const v = $('#aSize').value;
+  if (v === 'corners' && S.box) return S.box;
+  if (v === 'map' && maps.amap) { const b = maps.amap.m.getBounds(); return [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]; }
+  const km = isFinite(+v) ? +v : 10, dlat = km / 2 / 110.574, dlon = km / 2 / (111.320 * Math.cos(S.lat * Math.PI / 180));
+  return [S.lon - dlon, S.lat - dlat, S.lon + dlon, S.lat + dlat];
+}
+async function runArea() {
+  const bb = areaBox(), n = +$('#aRes').value, prog = $('#aProg'), err = $('#aErr'); err.textContent = '';
+  const hKm = (bb[3] - bb[1]) * 110.574, wKm = (bb[2] - bb[0]) * 111.320 * Math.cos((bb[1] + bb[3]) / 2 * Math.PI / 180);
+  if (!(hKm > 0.05 && wKm > 0.05)) { err.textContent = 'That area is too small to study.'; return; }
+  if (hKm > 600 || wKm > 600) { err.textContent = 'That area is wider than 600 km. Zoom the map in or pick a fixed size.'; return; }
+  await ensureGeoidBox(bb);
+  const nx = n, ny = Math.min(2 * n, Math.max(2, Math.round(n * hKm / wKm)));
+  const lats = Float64Array.from({ length: ny }, (_, r) => bb[3] - (r + 0.5) * (bb[3] - bb[1]) / ny), lons = Float64Array.from({ length: nx }, (_, c) => bb[0] + (c + 0.5) * (bb[2] - bb[0]) / nx);
+  const N96 = new Float32Array(nx * ny), N08 = new Float32Array(nx * ny);
+  for (let r = 0; r < ny; r++) for (let c = 0; c < nx; c++) { N96[r * nx + c] = geoidN('egm96', lats[r], lons[c]); N08[r * nx + c] = geoidN('egm2008', lats[r], lons[c]); }
+  const Nof = d => d === 'egm96' ? N96 : d === 'egm2008' ? N08 : null;
+  const ids = activeModels(), models = {}; prog.hidden = false; prog.value = 0.02;
+  for (let q = 0; q < ids.length; q++) {
+    const id = ids[q], m = modelById(id), g = new Float32Array(nx * ny).fill(NaN);
+    /* read one source into the cells still empty, converting to ellipsoid height on the way */
+    const fill = async (reader, datum) => { const tmp = new Float32Array(nx * ny); for (let k = 0; k < tmp.length; k++) tmp[k] = isNaN(g[k]) ? NaN : 0; await reader(tmp); const Nd = Nof(datum); for (let k = 0; k < tmp.length; k++) if (isNaN(g[k]) && !isNaN(tmp[k])) g[k] = tmp[k] + (Nd ? Nd[k] : 0); };
+    try {
+      for (const f of filesOf(id)) { const b = f.src.bbox; if (b[0] > bb[2] || b[2] < bb[0] || b[1] > bb[3] || b[3] < bb[1]) continue; await fill(t => f.src.readGrid(lats, lons, t), f.datum); }
+      if (m.online && S.on.has(id) && netOK() && g.some(isNaN)) {
+        if (id === 'om90') {
+          const k = Math.min(30, nx), kr = Math.min(30, ny), la = [], lo = [];
+          for (let r = 0; r < kr; r++) for (let c = 0; c < k; c++) { la.push(bb[3] - (r + 0.5) * (bb[3] - bb[1]) / kr); lo.push(bb[0] + (c + 0.5) * (bb[2] - bb[0]) / k); }
+          const v = await omFetch(la, lo), get = (i, j) => v[Math.min(kr - 1, Math.max(0, j)) * k + Math.min(k - 1, Math.max(0, i))];
+          await fill(async t => { for (let r = 0; r < ny; r++) for (let c = 0; c < nx; c++) { const kk = r * nx + c; if (isNaN(t[kk])) t[kk] = bilin(get, Math.max(0, (c + 0.5) * k / nx - 0.5), Math.max(0, (r + 0.5) * kr / ny - 0.5)); } }, m.datum);
+        } else {
+          const a0 = Math.floor(bb[1]), a1 = Math.floor(bb[3]), o0 = Math.floor(bb[0]), o1 = Math.floor(bb[2]);
+          if ((a1 - a0 + 1) * (o1 - o0 + 1) > 16) throw new Error('the area spans more than 16 one-degree tiles');
+          for (let a = a0; a <= a1; a++) for (let o = o0; o <= o1; o++) { const s = await openTile(id, a, o); if (s) await fill(t => s.readGrid(lats, lons, t), m.datum); }
+        }
+      }
+    } catch (e) { err.textContent += `${m.name}: ${friendly(e)}. `; }
+    if (g.some(v => !isNaN(v))) models[id] = g;
+    prog.value = (q + 1) / ids.length; await new Promise(r => setTimeout(r, 0));
+  }
+  prog.hidden = true; fitArea();
+  S.area = { bb, nx, ny, lats, lons, N96, N08, models, ids: Object.keys(models), dx: wKm * 1000 / nx, dy: hKm * 1000 / ny, wKm, hKm, sel: null };
+  $('#tab-area').classList.add('has-result');
+  setupAreaUI();
+}
+function slopeGrid(g, A) { const { nx, ny, dx, dy } = A, o = new Float32Array(nx * ny).fill(NaN); for (let r = 1; r < ny - 1; r++) for (let c = 1; c < nx - 1; c++) { const k = r * nx + c, sx = (g[k + 1] - g[k - 1]) / (2 * dx), sy = (g[k - nx] - g[k + nx]) / (2 * dy); o[k] = Math.atan(Math.hypot(sx, sy)) * 180 / Math.PI; } return o; }
+function layerData() {
+  const A = S.area, L0 = $('#aLayer').value, a = $('#aA').value, b = $('#aB').value, No = S.ref === 'egm96' ? A.N96 : S.ref === 'egm2008' ? A.N08 : null;
+  const sub = (x, y) => x.map((v, i) => v - y[i]);
+  if (L0 === 'terrain' && A.models[a]) return { d: No ? sub(A.models[a], No) : A.models[a], unit: 'm', pal: 'terrain', shade: A.models[a], title: `${modelById(a).name}, height ${DATUM[S.ref].long}`, dec: 0 };
+  if (L0 === 'diff' && A.models[a] && A.models[b]) return { d: sub(A.models[a], A.models[b]), unit: 'm', pal: 'div', title: `${modelById(a).name} minus ${modelById(b).name}`, dec: 1 };
+  if (L0 === 'slope' && A.models[a]) return { d: slopeGrid(A.models[a], A), unit: '°', pal: 'seq', title: `Slope from ${modelById(a).name}`, dec: 0 };
+  if (L0 === 'n96') return { d: A.N96, unit: 'm', pal: 'seq', title: 'EGM96 geoid undulation N', dec: 2 };
+  if (L0 === 'dn') return { d: sub(A.N08, A.N96), unit: 'm', pal: 'div', title: 'EGM2008 minus EGM96', dec: 2 };
+  return { d: A.N08, unit: 'm', pal: 'seq', title: 'EGM2008 geoid undulation N', dec: 2 };
+}
+const PAL = { terrain: [[0, 71, 122, 96], [.25, 148, 176, 110], [.5, 222, 201, 140], [.75, 150, 104, 72], [1, 250, 250, 250]], seq: [[0, 247, 240, 215], [.35, 222, 160, 48], [.7, 31, 111, 139], [1, 18, 49, 58]], div: [[0, 31, 111, 139], [.5, 250, 250, 248], [1, 190, 60, 50]] };
+function pal(name, t) { const p = PAL[name]; t = Math.min(1, Math.max(0, t)); for (let i = 1; i < p.length; i++) if (t <= p[i][0]) { const u = (t - p[i - 1][0]) / (p[i][0] - p[i - 1][0]); return [1, 2, 3].map(k => p[i - 1][k] + (p[i][k] - p[i - 1][k]) * u); } return p[p.length - 1].slice(1); }
+let curLayer = null;
+function drawArea() {
+  const A = S.area, Ld = layerData(), cv = $('#aCanvas'), L0 = $('#aLayer').value; cv.width = A.nx; cv.height = A.ny;
+  $('#aA').hidden = !['terrain', 'diff', 'slope'].includes(L0) || !A.ids.length; $('#aB').hidden = L0 !== 'diff'; const ctx = cv.getContext('2d'), im = ctx.createImageData(A.nx, A.ny);
+  const st = stats(Ld.d); let lo = st ? st.min : 0, hi = st ? st.max : 1; if (Ld.pal === 'div') { const m = Math.max(Math.abs(lo), Math.abs(hi)) || 1; lo = -m; hi = m; } if (hi - lo < 1e-9) hi = lo + 1;
+  for (let k = 0; k < Ld.d.length; k++) {
+    const v = Ld.d[k]; let c = [128, 140, 148], al = 0;
+    if (!isNaN(v)) { al = 255; c = pal(Ld.pal, (v - lo) / (hi - lo)); if (Ld.shade) { const g = Ld.shade, r = Math.floor(k / A.nx), cc = k % A.nx; if (r > 0 && r < A.ny - 1 && cc > 0 && cc < A.nx - 1) { const sx = (g[k + 1] - g[k - 1]) / (2 * A.dx), sy = (g[k - A.nx] - g[k + A.nx]) / (2 * A.dy); if (!isNaN(sx) && !isNaN(sy)) { const sh = Math.min(1.25, Math.max(0.45, 0.85 + (-sx + sy) * 1.2)); c = c.map(x => Math.min(255, x * sh)); } } } }
+    im.data[k * 4] = c[0]; im.data[k * 4 + 1] = c[1]; im.data[k * 4 + 2] = c[2]; im.data[k * 4 + 3] = al;
+  }
+  ctx.putImageData(im, 0, 0);
+  const lb = $('#lgBar').getContext('2d'), li = lb.createImageData(256, 1); for (let i = 0; i < 256; i++) { const c = pal(Ld.pal, i / 255); li.data.set([c[0], c[1], c[2], 255], i * 4); } lb.putImageData(li, 0, 0);
+  $('#lgMin').textContent = fmt(lo, Ld.dec) + ' ' + Ld.unit; $('#lgMax').textContent = fmt(hi, Ld.dec) + ' ' + Ld.unit;
+  $('#aTitle').textContent = Ld.title; curLayer = Ld;
+  const am = maps.amap; if (am) { if (am.overlay) am.overlay.remove(); am.overlay = L.imageOverlay(cv.toDataURL(), [[A.bb[1], A.bb[0]], [A.bb[3], A.bb[2]]], { opacity: $('#aOp').value / 100, interactive: false }).addTo(am.m); $('#aTools').hidden = false; }
+  if (A.sel != null) showCell(A.sel);
+  renderHist(); renderProfile();
+}
+function showCell(k) { const A = S.area, r = Math.floor(k / A.nx), c = k % A.nx; $('#aRead').innerHTML = `<strong>${fmt(curLayer.d[k], Math.max(1, curLayer.dec))} ${curLayer.unit}</strong> at ${fmtLL(A.lats[r], A.lons[c])}`; }
+function setupAreaUI() {
+  const A = S.area; $('#aEmpty').hidden = true; $('#aRes1').hidden = false;
+  const has = A.ids.length > 0, two = A.ids.length > 1, keepL = $('#aLayer').value, keepA = $('#aA').value, keepB = $('#aB').value, keepR = $('#aRef').value;
+  $('#aLayer').innerHTML = (has ? '<option value="terrain">Terrain height</option>' : '') + (two ? '<option value="diff">Difference, A minus B</option>' : '') + (has ? '<option value="slope">Slope</option>' : '') + '<option value="n08">Geoid N, EGM2008</option><option value="n96">Geoid N, EGM96</option><option value="dn">EGM2008 minus EGM96</option>';
+  const opts = A.ids.map(id => `<option value="${id}">${esc(modelById(id).name)}</option>`).join('');
+  $('#aA').innerHTML = opts; $('#aB').innerHTML = opts; $('#aRef').innerHTML = opts;
+  const setIf = (sel, v, fb) => { const e = $(sel); if ([...e.options].some(o => o.value === v)) e.value = v; else if (fb != null && [...e.options].some(o => o.value === fb)) e.value = fb; };
+  setIf('#aLayer', keepL); setIf('#aA', keepA, A.ids.includes('dted') ? 'dted' : null); setIf('#aB', keepB, A.ids.find(i => i !== $('#aA').value)); setIf('#aRef', keepR);
+  if (two && $('#aB').value === $('#aA').value) $('#aB').value = A.ids.find(i => i !== $('#aA').value);
+  $('#aRef').parentElement.hidden = !two;
+  const s96 = stats(A.N96), s08 = stats(A.N08), sd = stats(A.N08.map((v, i) => v - A.N96[i]));
+  let gmax = 0; for (let r = 0; r < A.ny; r++) for (let c = 1; c < A.nx; c++) { const k = r * A.nx + c; gmax = Math.max(gmax, Math.abs(A.N08[k] - A.N08[k - 1]) / A.dx); if (r) gmax = Math.max(gmax, Math.abs(A.N08[k] - A.N08[k - A.nx]) / A.dy); }
+  $('#aGeoid').innerHTML = `<dt>Area</dt><dd>${A.wKm.toFixed(1)} × ${A.hKm.toFixed(1)} km, ${A.nx} × ${A.ny} samples</dd><dt>${T('nrange', 'EGM96 N, lowest to highest')}</dt><dd>${fmt(s96.min, 2)} to ${fmt(s96.max, 2)} m</dd><dt>${T('nrange', 'EGM2008 N, lowest to highest')}</dt><dd>${fmt(s08.min, 2)} to ${fmt(s08.max, 2)} m</dd><dt>${T('gslope', 'Steepest geoid slope')}</dt><dd>${fmt(gmax * 1e5, 1)} cm per km</dd><dt>${T('dn', 'EGM2008 minus EGM96')}</dt><dd>${sgn(sd.min, 2)} to ${sgn(sd.max, 2)} m</dd><dt>${T('oneN', 'Error if one N is used for the whole area')}</dt><dd>up to ${fmt((s96.max - s96.min) / 2, 2)} m</dd>`;
+  const No = S.ref === 'egm96' ? A.N96 : S.ref === 'egm2008' ? A.N08 : null;
+  $('#aTerr').innerHTML = has ? `<thead><tr><th>Model</th><th>${T('lowest', 'Lowest')}</th><th>${T('highest', 'Highest')}</th><th>${T('relief', 'Relief')}</th><th>${T('mslope', 'Mean slope')}</th><th>${T('covered', 'Covered')}</th></tr></thead>` + A.ids.map(id => { const g = A.models[id], s = stats(No ? g.map((v, i) => v - No[i]) : g), sl = stats(slopeGrid(g, A)), m = modelById(id); return `<tr><td><span class="sw" style="background:${m.color}"></span>${esc(m.name)}</td><td data-l="Lowest">${fmt(s.min, 0)} m</td><td data-l="Highest">${fmt(s.max, 0)} m</td><td data-l="Relief">${fmt(s.max - s.min, 0)} m</td><td data-l="Mean slope">${sl ? fmt(sl.mean, 1) + '°' : ''}</td><td data-l="Covered">${(s.cover * 100).toFixed(0)}%</td></tr>`; }).join('') + `<tr><td colspan="6" class="hint">Heights ${DATUM[S.ref].long}.</td></tr>` : `<tr><td class="hint">No terrain model covers this area${netOK() ? '' : ' while nothing can be looked up online'}. The geoid layers are still available.</td></tr>`;
+  renderDiffTable(); drawArea();
+}
+function renderDiffTable() {
+  const A = S.area, ref = $('#aRef').value; if (A.ids.length < 2) { $('#aDiff').innerHTML = '<tr><td class="hint">Two models that cover this area are needed to compare them.</td></tr>'; return; }
+  const dtedSpec = id => { if (id !== 'dted' && ref !== 'dted') return null; const f = filesOf('dted')[0]; return f && DTED_SPEC[f.src.level] ? { le: DTED_SPEC[f.src.level].le, level: f.src.level } : null; };
+  $('#aDiff').innerHTML = `<thead><tr><th>Model</th><th>${T('meanoff', 'Mean offset')}</th><th>${T('sigma', 'Spread (σ)')}</th><th>${T('rmse', 'RMSE')}</th><th>${T('le90', '90% within')}</th><th>${T('largest', 'Largest')}</th></tr></thead>` + A.ids.filter(id => id !== ref).map(id => {
+    const s = stats(A.models[id].map((v, i) => v - A.models[ref][i])), m = modelById(id), sp = dtedSpec(id);
+    return s ? `<tr><td><span class="sw" style="background:${m.color}"></span>${esc(m.name)}${sp ? ` <span class="badge ${s.le90 <= sp.le ? 'ok' : 'bad'}" data-tip="DTED Level ${sp.level} asks for 90% of posts within ${sp.le} m of the truth. This compares the “90% within” figure with that objective.">${s.le90 <= sp.le ? 'inside' : 'outside'} DTED L${sp.level} ${sp.le} m</span>` : ''}</td><td data-l="Mean offset">${sgn(s.mean, 2)} m</td><td data-l="Spread (σ)">${fmt(s.sd, 2)} m</td><td data-l="RMSE">${fmt(s.rmse, 2)} m</td><td data-l="90% within">±${fmt(s.le90, 1)} m</td><td data-l="Largest">${sgn(Math.abs(s.min) > Math.abs(s.max) ? s.min : s.max, 1)} m</td></tr>` : `<tr><td>${esc(m.name)}</td><td colspan="5" class="l">no overlap with the reference</td></tr>`;
+  }).join('');
+}
+function axes(svg, x0, x1, y0, y1, xl, yl, box) {
+  const [Lx, Tp, R, B] = box, X = v => Lx + (v - x0) / (x1 - x0) * (R - Lx), Y = v => B - (v - y0) / (y1 - y0) * (B - Tp);
+  const tx = niceTicks(x0, x1, 5), ty = niceTicks(y0, y1, 4);
+  for (const v of ty.t) { svg.appendChild(svgEl('path', { d: `M${Lx} ${Y(v)}H${R}`, class: 'l-rule' })); svg.appendChild(svgEl('text', { x: Lx - 6, y: Y(v) + 4, 'text-anchor': 'end', 'font-size': 12, class: 't-dim' }, fmt(v, tickDec(ty.s)))); }
+  for (const v of tx.t) svg.appendChild(svgEl('text', { x: X(v), y: B + 16, 'text-anchor': 'middle', 'font-size': 12, class: 't-dim' }, fmt(v, tickDec(tx.s))));
+  svg.appendChild(svgEl('path', { d: `M${Lx} ${B}H${R}`, class: 'l-dim' }));
+  svg.appendChild(svgEl('text', { x: R, y: B + 33, 'text-anchor': 'end', 'font-size': 12, class: 't-dim' }, xl)); svg.appendChild(svgEl('text', { x: Lx - 46, y: Tp - 10, 'font-size': 12, class: 't-dim' }, yl));
+  return { X, Y };
+}
+function renderProfile() {
+  const A = S.area, svg = $('#figProf'); svg.innerHTML = ''; const we = S.profDir === 'we', n = we ? A.nx : A.ny, len = we ? A.wKm : A.hKm;
+  $('#bProfDir').textContent = we ? 'Switch to north–south' : 'Switch to west–east';
+  const idx = i => we ? Math.floor(A.ny / 2) * A.nx + i : i * A.nx + Math.floor(A.nx / 2), Nk = k => S.ref === 'egm96' ? A.N96[k] : S.ref === 'egm2008' ? A.N08[k] : 0;
+  const series = A.ids.length ? A.ids.map(id => ({ name: modelById(id).short, col: modelById(id).color, v: Array.from({ length: n }, (_, i) => { const k = idx(i); return A.models[id][k] - Nk(k); }) })) : [{ name: 'EGM2008 N', cls: 'l-cyan', v: Array.from({ length: n }, (_, i) => A.N08[idx(i)]) }, { name: 'EGM96 N', cls: 'l-amber', v: Array.from({ length: n }, (_, i) => A.N96[idx(i)]) }];
+  $('#capProf').textContent = `${A.ids.length ? 'Terrain' : 'Geoid'} profile through the centre, ${we ? 'west to east' : 'south to north'}${A.ids.length ? ', heights ' + DATUM[S.ref].long : ''}.`;
+  const all = series.flatMap(s => s.v).filter(v => !isNaN(v)); if (!all.length) return; let lo = Math.min(...all), hi = Math.max(...all); const p = Math.max((hi - lo) * 0.08, 0.05); lo -= p; hi += p;
+  const { X, Y } = axes(svg, 0, len, lo, hi, 'distance, km', 'metres', [58, 30, 545, 200]);
+  series.forEach((s, si) => {
+    let d = '', pen = false; s.v.forEach((v, i) => { const j = we ? i : n - 1 - i, val = s.v[j]; if (isNaN(val)) { pen = false; return; } d += `${pen ? 'L' : 'M'}${X((i + 0.5) / n * len).toFixed(1)} ${Y(val).toFixed(1)}`; pen = true; });
+    const a = { d, fill: 'none', 'stroke-width': 1.8, 'stroke-linejoin': 'round' }; if (s.col) a.stroke = s.col; else a.class = s.cls;
+    const path = svgEl('path', a); svg.appendChild(path);
+    if (!REDUCED && d) { const l = path.getTotalLength(); path.style.strokeDasharray = l; path.style.strokeDashoffset = l; path.getBoundingClientRect(); path.style.transition = 'stroke-dashoffset 800ms ease-out'; path.style.strokeDashoffset = 0; }
+    const lx = 58 + (si % 4) * 124, ly = 252 + Math.floor(si / 4) * 16, key = svgEl('rect', { x: lx, y: ly, width: 14, height: 4 }); if (s.col) key.setAttribute('fill', s.col); else key.setAttribute('class', s.cls === 'l-cyan' ? 'f-cyan' : 'f-ink'); svg.appendChild(key);
+    svg.appendChild(svgEl('text', { x: lx + 19, y: ly + 6, 'font-size': 12, class: 't-ink' }, s.name));
+  });
+}
+function renderHist() {
+  const svg = $('#figHist'); svg.innerHTML = ''; const Ld = curLayer, st = stats(Ld.d); if (!st) { $('#capHist').textContent = 'No data in this layer.'; return; }
+  let lo = st.min, hi = st.max; if (hi - lo < 1e-9) { lo -= 0.5; hi += 0.5; } const nb = 40, bins = new Array(nb).fill(0); for (const v of Ld.d) if (!isNaN(v)) bins[Math.min(nb - 1, Math.floor((v - lo) / (hi - lo) * nb))]++;
+  const mx = Math.max(...bins), { X, Y } = axes(svg, lo, hi, 0, mx / st.n * 100, Ld.unit === '°' ? 'degrees' : 'metres', '% of area', [58, 30, 545, 200]);
+  bins.forEach((b, i) => { const x = X(lo + i / nb * (hi - lo)), w = (545 - 58) / nb - 1, r = svgEl('rect', { x, width: w, y: 200, height: 0, class: 'f-cyan' }); if (Ld.pal === 'div') { r.removeAttribute('class'); r.setAttribute('fill', `rgb(${pal('div', (lo + (i + 0.5) / nb * (hi - lo) + Math.max(Math.abs(lo), Math.abs(hi))) / (2 * Math.max(Math.abs(lo), Math.abs(hi)))).map(Math.round)})`); r.setAttribute('stroke', 'var(--rule)'); r.setAttribute('stroke-width', 0.5); } svg.appendChild(r); tween(450, e => { const h = Math.max(0, (200 - Y(b / st.n * 100)) * e); r.setAttribute('y', 200 - h); r.setAttribute('height', h); }); });
+  $('#capHist').textContent = `How “${Ld.title}” is spread over the area: mean ${fmt(st.mean, Math.max(1, Ld.dec))} ${Ld.unit}, spread σ ${fmt(st.sd, Math.max(1, Ld.dec))} ${Ld.unit}.`;
+}
+
+/* ---------------- reports ---------------- */
+function download(name, data, type) { const a = el('a'); a.href = URL.createObjectURL(data instanceof Blob ? data : new Blob([data], { type })); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 800); }
+function exportData() {
+  const P = S.point, A = S.area, o = { app: APP.name, version: APP.ver, generated: new Date().toISOString(), point: null, area: null }, r2 = v => isFinite(v) ? +v.toFixed(2) : null;
+  if (P && P.est) { const E = P.est; o.point = { latitude: +P.lat.toFixed(6), longitude: +P.lon.toFixed(6), geoid_N_egm96_m: +P.n96.toFixed(3), geoid_N_egm2008_m: +P.n08.toFixed(3),
+    best_estimate: E.n ? { above_msl_egm96_m: r2(E.med - P.n96), above_msl_egm96_ft: Math.round((E.med - P.n96) * 3.28084), above_msl_egm2008_m: r2(E.med - P.n08), above_ellipsoid_m: r2(E.med), likely_within_m: E.pm, independent_sources: E.reps.map(r => r.name), slope_deg: P.slope == null ? null : +P.slope.toFixed(1) } : null,
+    sources: [...P.rows, ...(P.gps ? [{ name: 'GPS height entered', via: 'entered', ...P.gps }] : [])].map(r => ({ source: r.name, from: r.via === 'file' ? 'file' : r.via, value_from_source_m: r2(r.native), source_reference: r.datum, above_ellipsoid_m: r2(r.hae), above_msl_egm96_m: r2(r.hae - P.n96), above_msl_egm2008_m: r2(r.hae - P.n08), note: r.err || r.why || '' })) }; }
+  if (A) { const ref = $('#aRef').value; o.area = { west: A.bb[0], south: A.bb[1], east: A.bb[2], north: A.bb[3], samples: [A.nx, A.ny], geoid_egm96: stats(A.N96), geoid_egm2008: stats(A.N08), reference_model: A.ids.length > 1 ? modelById(ref).name : null, differences_vs_reference: A.ids.length > 1 ? A.ids.filter(i => i !== ref).map(id => ({ model: modelById(id).name, ...stats(A.models[id].map((v, i) => v - A.models[ref][i])) })) : [] }; }
+  return o;
+}
+function toCsv() {
+  const o = exportData(), Lr = [], q = v => v == null ? '' : /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : v;
+  if (o.point) { const p = o.point; Lr.push(['Point', p.latitude, p.longitude].join(',')); Lr.push(['Geoid N EGM96 (m)', p.geoid_N_egm96_m].join(',')); Lr.push(['Geoid N EGM2008 (m)', p.geoid_N_egm2008_m].join(','));
+    if (p.best_estimate) { const b = p.best_estimate; Lr.push(['Best estimate MSL EGM96 (m)', b.above_msl_egm96_m].join(',')); Lr.push(['Best estimate MSL EGM96 (ft)', b.above_msl_egm96_ft].join(',')); Lr.push(['Best estimate MSL EGM2008 (m)', b.above_msl_egm2008_m].join(',')); Lr.push(['Best estimate above ellipsoid (m)', b.above_ellipsoid_m].join(',')); Lr.push(['Likely within (m)', b.likely_within_m].join(',')); Lr.push(['Independent sources', q(b.independent_sources.join('; '))].join(',')); }
+    Lr.push(''); Lr.push('Source,From,Value from source (m),Source reference,Above ellipsoid (m),Above MSL EGM96 (m),Above MSL EGM2008 (m),Note'); for (const r of p.sources) Lr.push(Object.values(r).map(q).join(',')); }
+  if (o.area) { const a = o.area; Lr.push(''); Lr.push(['Area W S E N', a.west, a.south, a.east, a.north].join(',')); Lr.push(['EGM96 N min/max (m)', a.geoid_egm96.min.toFixed(3), a.geoid_egm96.max.toFixed(3)].join(',')); Lr.push(['EGM2008 N min/max (m)', a.geoid_egm2008.min.toFixed(3), a.geoid_egm2008.max.toFixed(3)].join(',')); if (a.differences_vs_reference.length) { Lr.push(''); Lr.push('Model minus ' + q(a.reference_model) + ',Mean (m),Sigma (m),RMSE (m),90% within (m),Min (m),Max (m)'); for (const d of a.differences_vs_reference) Lr.push([q(d.model), d.mean, d.sd, d.rmse, d.le90, d.min, d.max].map(v => typeof v === 'number' ? v.toFixed(3) : v).join(',')); } }
+  return Lr.join('\r\n');
+}
+function summaryText() {
+  const P = S.point; if (!P || !P.est) return ''; const E = P.est, L1 = [`${APP.name}  ${fmtLL(P.lat, P.lon)}  (${fmtDMS(P.lat, P.lon)})`];
+  if (E.n) { L1.push(`Ground: ${fmt(E.med - P.n96, 0)} m / ${FT(E.med - P.n96)} ft MSL (EGM96), likely within ±${E.pm} m`); L1.push(`Same point: ${fmt(E.med - P.n08, 1)} m MSL (EGM2008), ${fmt(E.med, 1)} m above WGS84 ellipsoid`); }
+  L1.push(`Geoid N: EGM96 ${fmt(P.n96, 2)} m, EGM2008 ${fmt(P.n08, 2)} m`);
+  for (const r of E.ok) L1.push(`${r.name} (${viaLabel(r)}): ${fmt(r.hae - P.n96, 1)} m MSL EGM96`);
+  if (P.slope != null) L1.push(`Slope about ${fmt(P.slope, 0)} deg`);
+  return L1.join('\n');
+}
+const pointLink = () => location.href.split('#')[0] + `#point/${S.lat.toFixed(5)},${S.lon.toFixed(5)}`;
+async function copyText(t, okMsg) { try { await navigator.clipboard.writeText(t); toast(okMsg); } catch (e) { const ta = el('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); toast(okMsg); } catch (x) { toast('Could not copy'); } ta.remove(); } }
+
+/* ---------------- explanations on hover, or on tap where there is no hover ---------------- */
+function initTips() {
+  const box = $('#tip'); let cur = null;
+  const show = t => { cur = t; box.textContent = t.getAttribute('data-tip'); box.style.display = 'block'; const r = t.getBoundingClientRect(), w = box.offsetWidth, h = box.offsetHeight; let y = r.top - h - 8; if (y < 8) y = Math.min(innerHeight - h - 8, r.bottom + 8); box.style.left = Math.min(innerWidth - w - 8, Math.max(8, r.left + r.width / 2 - w / 2)) + 'px'; box.style.top = y + 'px'; };
+  const hide = () => { cur = null; box.style.display = 'none'; }, find = e => e.target.closest ? e.target.closest('[data-tip]') : null;
+  if (!TOUCH) { document.addEventListener('mouseover', e => { const t = find(e); t ? show(t) : hide(); }); document.addEventListener('focusin', e => { const t = find(e); if (t) show(t); }); document.addEventListener('focusout', hide); }
+  else document.addEventListener('click', e => { const t = find(e); if (!t || t === cur || t.matches('button,select,input,label,a')) hide(); else show(t); });
+  addEventListener('scroll', hide, true);
+}
+
+/* ---------------- tabs and start-up ---------------- */
+function showTab(t, push) {
+  if (!$('#tab-' + t)) t = 'point';
+  $$('nav.tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === t)); $$('section.tab').forEach(s => s.classList.toggle('on', s.id === 'tab-' + t));
+  if (push !== false) try { history.replaceState(null, '', '#' + t); } catch (e) { }
+  if (t === 'point') showMap('map'); if (t === 'area') showMap('amap');
+  scrollTo(0, 0);
+}
+function readHash() { const h = decodeURIComponent(location.hash.slice(1)), m = /^point\/(.+)$/.exec(h); if (m) { const p = parseCoord(m[1]); if (p) { S.lat = p.lat; S.lon = p.lon; } return 'point'; } return h || 'point'; }
+async function init() {
+  $('#verLine').textContent = `${APP.name} version ${APP.ver}, build ${APP.build}.`;
+  if (typeof DecompressionStream === 'undefined') { $('#readout').innerHTML = '<div class="ro-msg">This browser is too old to run the app. Use a current Chrome, Edge, Firefox or Safari.</div>'; return; }
+  const tab = readHash();
+  initTips();
+  try { await loadPack('sa'); } catch (e) { $('#readout').innerHTML = '<div class="ro-msg">The geoid data could not be loaded. Reload the page while online.</div>'; return; }
+  const s = S.lat.toFixed(5) + ', ' + S.lon.toFixed(5); $('#coord').value = s; $('#aCoord').value = s;
+  if (innerWidth >= 1000) $('#srcPanel').open = true;
+  $('#aRes').value = innerWidth < 720 ? '120' : '240';
+  renderCatalog(); renderFiles(); renderNet(); warm();
+  let opened = []; addEventListener('beforeprint', () => { opened = $$('#dtedCheck details:not([open])'); opened.forEach(d => d.open = true); }); addEventListener('afterprint', () => { opened.forEach(d => d.open = false); opened = []; });
+  addEventListener('online', () => { S.online = true; renderNet(); computePoint(); }); addEventListener('offline', () => { S.online = false; renderNet(); });
+  $$('nav.tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
+  $('.brand').onclick = e => { e.preventDefault(); showTab('point'); };
+  addEventListener('hashchange', () => { const t = readHash(); if (/^point\//.test(decodeURIComponent(location.hash.slice(1)))) setPoint(S.lat, S.lon, true); showTab(t, false); });
+  $('#themeBtn').onclick = () => { const t = document.documentElement.getAttribute('data-theme') === 'day' ? 'night' : 'day'; document.documentElement.setAttribute('data-theme', t); store.set('theme', t); if (S.point) renderPoint(); if (S.area) { renderProfile(); renderHist(); } };
+  $('#netChip').onclick = () => { if (S.online && !S.blocked) setEmcon(!S.emcon); };
+  $('#emcon').onchange = e => setEmcon(e.target.checked);
+  const onCoord = () => { const p = parseCoord($('#coord').value); if (!p) { $('#coordErr').textContent = 'Could not read that. Try 26.2933, 78.2278 or N26 17.598 E078 13.668.'; return; } $('#coord').blur(); setPoint(p.lat, p.lon, true); };
+  $('#coord').addEventListener('change', onCoord); $('#coord').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); onCoord(); } });
+  const onGps = () => { const v = $('#gpsH').value; S.gpsH = v === '' || !isFinite(+v) ? null : +v; S.gpsRef = $('#gpsRef').value; if (S.point) renderPoint(); }; $('#gpsH').addEventListener('input', onGps); $('#gpsRef').addEventListener('change', onGps);
+  $('#bLocate').onclick = () => {
+    if (S.emcon) { toast('Off under EMCON: finding a location can contact a network service'); return; }
+    if (!navigator.geolocation) { toast('This browser does not give a location'); return; }
+    toast('Finding this device…');
+    navigator.geolocation.getCurrentPosition(pos => { const c = pos.coords; if (c.altitude != null && isFinite(c.altitude)) { const apple = /iPhone|iPad|Macintosh/.test(navigator.userAgent); $('#gpsH').value = c.altitude.toFixed(1); $('#gpsRef').value = apple ? 'egm96' : 'hae'; S.gpsH = +c.altitude.toFixed(1); S.gpsRef = $('#gpsRef').value; $('#gpsBox').open = true; $('#gpsNote').textContent = `This device reported ${c.altitude.toFixed(0)} m${c.altitudeAccuracy ? ' ±' + c.altitudeAccuracy.toFixed(0) + ' m' : ''}. ${apple ? 'Apple devices report height above sea level.' : 'Android and most others report height above the ellipsoid.'} Change the reference if that is wrong; the app will flag a mismatch.`; } setPoint(c.latitude, c.longitude, true); toast(`Position good to about ${Math.round(c.accuracy)} m`); },
+      e => toast(e.code === 1 ? 'Location permission was refused' : 'Could not get a location'), { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 });
+  };
+  $('#refSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.ref = b.dataset.ref; saveState(); if (S.point) renderPoint(); if (S.area) setupAreaUI(); });
+  $('#srcChecks').addEventListener('click', e => { const b = e.target.closest('.chipbtn'); if (b && !b.disabled) toggleModel(b.dataset.id); });
+  $('#liveChecks').addEventListener('change', e => { e.target.checked ? S.on.add(e.target.value) : S.on.delete(e.target.value); saveState(); renderSources(); computePoint(); });
+  const drop = $('#drop'), fi = $('#fileIn'); drop.onclick = () => fi.click(); drop.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fi.click(); } }; fi.onchange = () => { addFiles([...fi.files]); fi.value = ''; };
+  ['dragenter', 'dragover'].forEach(n => addEventListener(n, e => { e.preventDefault(); drop.classList.add('over'); })); ['dragleave', 'drop'].forEach(n => addEventListener(n, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  addEventListener('drop', e => { if (e.dataTransfer && e.dataTransfer.files.length) { showTab('data'); addFiles([...e.dataTransfer.files]); } });
+  $('#fList').addEventListener('change', e => { const i = e.target.dataset.i; if (i == null) return; const f = S.files[+i]; f[e.target.dataset.k] = e.target.value; f.checked = true; if (e.target.dataset.k === 'model') f.datum = modelById(e.target.value).datum; if (customs[f.model] && e.target.dataset.k === 'datum') customs[f.model].datum = f.datum; renderFiles(); renderSources(); computePoint(); });
+  $('#fList').addEventListener('click', e => { const i = e.target.dataset.rm; if (i == null) return; S.files.splice(+i, 1); renderFiles(); renderSources(); computePoint(); });
+  /* area page */
+  const onACoord = () => { const p = parseCoord($('#aCoord').value); if (!p) { $('#aCoordErr').textContent = 'Could not read that. Try 26.2933, 78.2278.'; return; } $('#aCoord').blur(); setPoint(p.lat, p.lon, true); fitArea(); };
+  $('#aCoord').addEventListener('change', onACoord); $('#aCoord').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); onACoord(); } });
+  const onCorners = () => { const a = parseCoord($('#aSW').value), b = parseCoord($('#aNE').value); if (!a || !b) return; if (b.lat <= a.lat || b.lon <= a.lon) { $('#aErr').textContent = 'The north-east corner must be north and east of the south-west corner.'; return; } $('#aErr').textContent = ''; S.box = [a.lon, a.lat, b.lon, b.lat]; updateMaps(); fitArea(); };
+  $('#aSW').addEventListener('change', onCorners); $('#aNE').addEventListener('change', onCorners);
+  $('#aSize').onchange = () => { const c = $('#aSize').value === 'corners'; $('#aCorners').hidden = !c; if (c && !S.box) { $('#aSize').value = '10'; const bb = areaBox(); setBox(bb); } updateMaps(); fitArea(); };
+  $('#bDraw').onclick = startDraw;
+  $('#bRun').onclick = () => runArea().catch(e => { $('#aErr').textContent = e.message; $('#aProg').hidden = true; });
+  $('#aOp').oninput = e => { const am = maps.amap; if (am && am.overlay) am.overlay.setOpacity(e.target.value / 100); };
+  ['aLayer', 'aA', 'aB'].forEach(id => $('#' + id).onchange = drawArea); $('#aRef').onchange = renderDiffTable;
+  $('#bProfDir').onclick = () => { S.profDir = S.profDir === 'we' ? 'ns' : 'we'; renderProfile(); };
+  const cv = $('#aCanvas'), at = e => { const A = S.area, r = cv.getBoundingClientRect(), c = Math.min(A.nx - 1, Math.max(0, Math.floor((e.clientX - r.left) / r.width * A.nx))), rw = Math.min(A.ny - 1, Math.max(0, Math.floor((e.clientY - r.top) / r.height * A.ny))); return rw * A.nx + c; };
+  cv.addEventListener('pointermove', e => { if (S.area && curLayer && e.pointerType === 'mouse' && S.area.sel == null) showCell(at(e)); });
+  cv.addEventListener('click', e => { if (!S.area || !curLayer) return; S.area.sel = at(e); showCell(S.area.sel); $('#bUseSpot').disabled = false; });
+  $('#bUseSpot').onclick = () => { const A = S.area; if (!A || A.sel == null) return; setPoint(A.lats[Math.floor(A.sel / A.nx)], A.lons[A.sel % A.nx], true); showTab('point'); };
+  $('#bPng').onclick = () => cv.toBlob(b => download('hard-deck-area.png', b));
+  /* reports */
+  $('#bPrint').onclick = () => { for (const k in maps) maps[k].m.invalidateSize(); setTimeout(() => window.print(), 150); };
+  $('#bCsv').onclick = () => download('hard-deck.csv', toCsv(), 'text/csv'); $('#bJson').onclick = () => download('hard-deck.json', JSON.stringify(exportData(), null, 2), 'application/json');
+  $('#bCopy').onclick = () => copyText(summaryText(), 'Summary copied');
+  $('#bLink').onclick = () => copyText(pointLink(), 'Link copied');
+  if (navigator.share) $('#bShare').onclick = () => navigator.share({ title: APP.name, text: summaryText() }).catch(() => { }); else $('#bShare').hidden = true;
+  showTab(tab, false);
+  await computePoint();
+  if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !window.PACKS) navigator.serviceWorker.register('sw.js').catch(() => { });
+}
+init();
+
+</script>
+</body>
+</html>
